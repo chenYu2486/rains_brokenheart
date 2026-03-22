@@ -1,0 +1,571 @@
+(() => {
+    const Config = window.AppConfig;
+    const Api = window.AppApi;
+    const UI = window.AppUI;
+
+    const clone = (value) => JSON.parse(JSON.stringify(value));
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const toInt = (value, fallback) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? Math.round(parsed) : fallback;
+    };
+
+    const createSessionState = () => ({
+        phase: 'idle',
+        selectedTagIds: [],
+        history: [],
+        displayMessages: [],
+        reports: [],
+        latestReport: null,
+        intakeTurnsCompleted: 0,
+        totalUserTurns: 0,
+        therapyTurnsSinceReview: 0,
+        activeArchiveId: null,
+        isBusy: false
+    });
+
+    const State = {
+        ...createSessionState(),
+        settings: loadSettings()
+    };
+
+    function loadSettings() {
+        const raw = localStorage.getItem(Config.storageKeys.settings);
+        const saved = raw ? JSON.parse(raw) : {};
+        const legacyApiKey = localStorage.getItem(Config.storageKeys.legacyApiKey) || '';
+
+        return {
+            apiBase: saved.apiBase || Config.defaults.apiBase,
+            apiKey: saved.apiKey || legacyApiKey || '',
+            assessModel: saved.assessModel || Config.defaults.assessModel,
+            therapyModel: saved.therapyModel || Config.defaults.therapyModel,
+            intakeTurns: clamp(toInt(saved.intakeTurns, Config.defaults.intakeTurns), 2, 8),
+            reassessEvery: clamp(toInt(saved.reassessEvery, Config.defaults.reassessEvery), 3, 12)
+        };
+    }
+
+    function persistSettings() {
+        localStorage.setItem(Config.storageKeys.settings, JSON.stringify(State.settings));
+        localStorage.setItem(Config.storageKeys.legacyApiKey, State.settings.apiKey || '');
+    }
+
+    function getSelectedTags() {
+        return Config.tags.filter((tag) => State.selectedTagIds.includes(tag.id));
+    }
+
+    function getSelectedTagLabels() {
+        return getSelectedTags().map((tag) => tag.label);
+    }
+
+    function phaseLabel(phase = State.phase) {
+        if (phase === 'intake') return '建档中';
+        if (phase === 'therapy') return '陪伴中';
+        return '未开始';
+    }
+
+    function normalizeWarningLevel(level, risk) {
+        const normalized = String(level || '').toLowerCase();
+        if (['low', 'medium', 'high', 'critical'].includes(normalized)) return normalized;
+        if (risk >= 85) return 'critical';
+        if (risk >= 65) return 'high';
+        if (risk >= 40) return 'medium';
+        return 'low';
+    }
+
+    function normalizeList(value, fallback) {
+        if (Array.isArray(value)) return value.filter(Boolean).map(String).slice(0, 4);
+        if (typeof value === 'string' && value.trim()) return [value.trim()];
+        return fallback;
+    }
+
+    function normalizeReport(raw, checkpointIndex, reportPhase) {
+        const risk = clamp(toInt(raw.risk, 20), 0, 100);
+        const report = {
+            checkpointIndex,
+            phase: reportPhase,
+            createdAt: Date.now(),
+            stage: String(raw.stage || (reportPhase === 'initial' ? '首次建档' : '持续追踪')).trim(),
+            stress: clamp(toInt(raw.stress, 50), 0, 100),
+            friction: clamp(toInt(raw.friction, 50), 0, 100),
+            risk,
+            resilience: clamp(toInt(raw.resilience, 50), 0, 100),
+            warningLevel: normalizeWarningLevel(raw.warningLevel, risk),
+            coreIssue: String(raw.coreIssue || '当前核心困扰仍需继续梳理').trim(),
+            cognitivePattern: String(raw.cognitivePattern || '认知模式仍在观察中').trim(),
+            supportFocus: String(raw.supportFocus || '先稳定感受，再逐步澄清触发点').trim(),
+            recommendedStyle: String(raw.recommendedStyle || '温柔、结构化、少评判').trim(),
+            summary: String(raw.summary || raw.coreIssue || '暂无总结').trim(),
+            nextSteps: normalizeList(raw.nextSteps, ['先把情绪和身体状态稳下来', '继续澄清触发点', '建立一个可执行的小动作']),
+            crisisSignals: normalizeList(raw.crisisSignals, []),
+            trend: String(raw.trend || (reportPhase === 'initial' ? '首次建档' : '波动')).trim(),
+            followUp: String(raw.followUp || '继续追踪情绪强度、功能受损和支持系统').trim()
+        };
+
+        if (report.warningLevel === 'critical' && !report.crisisSignals.length) {
+            report.crisisSignals = ['存在迫切的安全风险，需要先确认现实中的支持与保护'];
+        }
+
+        return report;
+    }
+
+    function parseReport(rawText, reportPhase) {
+        const match = rawText.match(/\{[\s\S]*\}/);
+        if (!match) throw new Error('评估模型没有返回合法 JSON');
+        const parsed = JSON.parse(match[0]);
+        return normalizeReport(parsed, State.reports.length + 1, reportPhase);
+    }
+
+    function summarizeReportsForPrompt() {
+        return State.reports.slice(-3).map((report) => [
+            `第${report.checkpointIndex}次评估`,
+            `时间:${new Date(report.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`,
+            `阶段:${report.stage}`,
+            `总结:${report.summary}`,
+            `风险:${report.warningLevel}`,
+            `下次关注:${report.followUp}`
+        ].join('；')).join('\n');
+    }
+
+    function visibleAssistantError(error, fallbackPrefix) {
+        return `${fallbackPrefix}: ${error.message || '链路暂时中断'}`;
+    }
+
+    function updateStatusFromState(customText) {
+        if (State.phase === 'idle') {
+            UI.updateStatus(customText || '等待选择建档方向...', 'idle');
+            return;
+        }
+
+        if (State.phase === 'intake') {
+            UI.updateStatus(customText || `[${State.settings.assessModel}] 初评建档中`, 'assess');
+            return;
+        }
+
+        const warning = ['high', 'critical'].includes(State.latestReport?.warningLevel);
+        UI.updateStatus(
+            customText || `[${State.settings.therapyModel}] 持续陪伴中`,
+            warning ? 'warning' : 'therapy'
+        );
+    }
+
+    function setBusy(flag) {
+        State.isBusy = flag;
+        const locked = State.phase === 'idle';
+        UI.els.input.disabled = flag || locked;
+        UI.els.sendBtn.disabled = flag || locked;
+    }
+
+    function addDisplayMessage(text, role, isSystem = false) {
+        const message = { text, role, isSystem };
+        State.displayMessages.push(message);
+        UI.appendMessage(message);
+    }
+
+    function resetSession() {
+        Object.assign(State, createSessionState(), { settings: State.settings });
+    }
+
+    function baseConversation() {
+        return State.history.filter((item) => item.role !== 'system');
+    }
+
+    function setSystemPrompt(content) {
+        State.history = [{ role: 'system', content }, ...baseConversation()];
+    }
+
+    function ensureApiReady() {
+        if (State.settings.apiKey) return true;
+        alert('请先在设置中配置 API Key。');
+        UI.toggleModal('settingsModal', true);
+        return false;
+    }
+
+    function syncKeywordUI() {
+        UI.renderTags(State.selectedTagIds, State.phase);
+    }
+
+    function currentArchiveTitle() {
+        const lastUserText = [...State.displayMessages].reverse().find((message) => message.role === 'user')?.text;
+        if (lastUserText) return lastUserText.slice(0, 18);
+        const labels = getSelectedTagLabels();
+        return labels.length ? labels.join(' / ').slice(0, 18) : '未命名对话';
+    }
+
+    const Archive = {
+        getAll() {
+            const raw = localStorage.getItem(Config.storageKeys.archives);
+            const archives = raw ? JSON.parse(raw) : [];
+            return archives.sort((a, b) => b.savedAt - a.savedAt);
+        },
+
+        saveAll(archives) {
+            localStorage.setItem(Config.storageKeys.archives, JSON.stringify(archives));
+        },
+
+        createSnapshot() {
+            return {
+                id: `archive_${Date.now()}`,
+                savedAt: Date.now(),
+                title: currentArchiveTitle(),
+                meta: new Date().toLocaleString('zh-CN', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }),
+                phaseLabel: phaseLabel(),
+                keywords: getSelectedTagLabels().join('、'),
+                state: {
+                    phase: State.phase,
+                    selectedTagIds: clone(State.selectedTagIds),
+                    history: clone(State.history),
+                    displayMessages: clone(State.displayMessages),
+                    reports: clone(State.reports),
+                    latestReport: clone(State.latestReport),
+                    intakeTurnsCompleted: State.intakeTurnsCompleted,
+                    totalUserTurns: State.totalUserTurns,
+                    therapyTurnsSinceReview: State.therapyTurnsSinceReview
+                }
+            };
+        },
+
+        saveCurrent() {
+            if (!State.displayMessages.length && !State.selectedTagIds.length) {
+                alert('当前还没有可存档的内容。');
+                return false;
+            }
+
+            const archives = this.getAll().filter((item) => item.id !== State.activeArchiveId);
+            const snapshot = this.createSnapshot();
+            archives.unshift(snapshot);
+            this.saveAll(archives.slice(0, Config.limits.archiveLimit));
+            State.activeArchiveId = snapshot.id;
+            return true;
+        },
+
+        remove(id) {
+            const archives = this.getAll().filter((item) => item.id !== id);
+            this.saveAll(archives);
+            if (State.activeArchiveId === id) State.activeArchiveId = null;
+        },
+
+        find(id) {
+            return this.getAll().find((item) => item.id === id);
+        }
+    };
+
+    async function streamAssistantReply({ model, messages, temperature, errorPrefix }) {
+        const handle = UI.beginAssistantStream();
+
+        try {
+            const fullText = await Api.streamChat({
+                apiBase: State.settings.apiBase,
+                apiKey: State.settings.apiKey,
+                model,
+                messages,
+                temperature,
+                onChunk: (text) => UI.updateAssistantStream(handle, text)
+            });
+
+            if (!fullText || !fullText.trim()) throw new Error('模型没有返回内容');
+
+            UI.finishAssistantStream(handle, fullText);
+            State.displayMessages.push({ text: fullText, role: 'assistant', isSystem: false });
+            State.history.push({ role: 'assistant', content: fullText });
+            return fullText;
+        } catch (error) {
+            const message = visibleAssistantError(error, errorPrefix);
+            UI.finishAssistantStream(handle, message);
+            State.displayMessages.push({ text: message, role: 'assistant', isSystem: false });
+            return null;
+        }
+    }
+
+    async function generateAssessment(reportPhase) {
+        UI.addTyping();
+        updateStatusFromState(`[${State.settings.assessModel}] ${reportPhase === 'initial' ? '生成初评画像...' : '更新追踪画像...'}`);
+
+        try {
+            const raw = await Api.chat({
+                apiBase: State.settings.apiBase,
+                apiKey: State.settings.apiKey,
+                model: State.settings.assessModel,
+                messages: [
+                    ...State.history,
+                    {
+                        role: 'user',
+                        content: Config.prompts.buildAssessmentJsonPrompt({
+                            tags: getSelectedTagLabels(),
+                            checkpointIndex: State.reports.length + 1,
+                            phaseLabel: reportPhase === 'initial' ? '首轮建档' : '持续追踪',
+                            totalUserTurns: State.totalUserTurns,
+                            previousReportsSummary: summarizeReportsForPrompt()
+                        })
+                    }
+                ],
+                temperature: Config.defaults.assessTemperature
+            });
+
+            const report = parseReport(raw, reportPhase);
+            State.latestReport = report;
+            State.reports.push(report);
+            State.therapyTurnsSinceReview = 0;
+            UI.showReport(report, State.reports);
+            return report;
+        } finally {
+            UI.removeTyping();
+        }
+    }
+
+    function rebuildTherapyContext() {
+        if (!State.latestReport) return;
+        setSystemPrompt(Config.prompts.buildTherapySystem({
+            tags: getSelectedTagLabels(),
+            latestReport: State.latestReport,
+            previousReportsSummary: summarizeReportsForPrompt()
+        }));
+    }
+
+    async function startIntakeFlow() {
+        State.phase = 'intake';
+        State.history = [{
+            role: 'system',
+            content: Config.prompts.buildAssessSystem({
+                tags: getSelectedTagLabels(),
+                intakeTurns: State.settings.intakeTurns
+            })
+        }];
+
+        UI.unlockChat();
+        syncKeywordUI();
+        updateStatusFromState();
+
+        await streamAssistantReply({
+            model: State.settings.assessModel,
+            messages: [
+                ...State.history,
+                {
+                    role: 'user',
+                    content: Config.prompts.buildKickoffPrompt({
+                        tags: getSelectedTagLabels()
+                    })
+                }
+            ],
+            temperature: Config.defaults.assessTemperature,
+            errorPrefix: '建档模型唤醒失败'
+        });
+    }
+
+    async function finishInitialAssessment() {
+        const report = await generateAssessment('initial');
+        addDisplayMessage('初始建档完成，已切换到持续陪伴模式。', 'system', true);
+        State.phase = 'therapy';
+        rebuildTherapyContext();
+        updateStatusFromState();
+
+        if (['high', 'critical'].includes(report.warningLevel)) {
+            addDisplayMessage('检测到较高风险信号，接下来会优先稳定情绪、确认安全，并提醒使用现实中的支持资源。', 'system', true);
+        }
+
+        await streamAssistantReply({
+            model: State.settings.therapyModel,
+            messages: State.history,
+            temperature: Config.defaults.therapyTemperature,
+            errorPrefix: '疗愈模型连接失败'
+        });
+    }
+
+    async function maybeReassessBeforeTherapyReply() {
+        if (State.therapyTurnsSinceReview < State.settings.reassessEvery) return;
+
+        const report = await generateAssessment('followup');
+        rebuildTherapyContext();
+        addDisplayMessage(`已完成第 ${report.checkpointIndex} 次追踪评估，陪伴策略已更新。`, 'system', true);
+
+        if (['high', 'critical'].includes(report.warningLevel)) {
+            addDisplayMessage('当前评估提示风险在上升，后续会优先确认你现在是否安全，以及你身边能联系到谁。', 'system', true);
+        }
+    }
+
+    function restoreSession(snapshot) {
+        const phaseMap = { 0: 'idle', 1: 'intake', 2: 'therapy' };
+        const loadedPhase = phaseMap[snapshot.phase] || snapshot.phase || 'idle';
+        const selectedTagIds = Array.isArray(snapshot.selectedTagIds)
+            ? snapshot.selectedTagIds
+            : (snapshot.selectedTag ? Config.tags.filter((tag) => tag.label === snapshot.selectedTag).map((tag) => tag.id) : []);
+        const displayMessages = snapshot.displayMessages || snapshot.messages || [];
+        const reports = snapshot.reports || (snapshot.latestReport || snapshot.report ? [snapshot.latestReport || snapshot.report] : []);
+        const latestReport = snapshot.latestReport || snapshot.report || reports[reports.length - 1] || null;
+
+        Object.assign(State, createSessionState(), {
+            settings: State.settings,
+            phase: loadedPhase,
+            selectedTagIds,
+            history: clone(snapshot.history || []),
+            displayMessages: clone(displayMessages),
+            reports: clone(reports),
+            latestReport: clone(latestReport),
+            intakeTurnsCompleted: toInt(snapshot.intakeTurnsCompleted ?? snapshot.assessTurns, 0),
+            totalUserTurns: toInt(snapshot.totalUserTurns, 0),
+            therapyTurnsSinceReview: toInt(snapshot.therapyTurnsSinceReview, 0)
+        });
+    }
+
+    const App = {
+        init() {
+            UI.init();
+            UI.bindHandlers({
+                onToggleTag: (tagId) => this.toggleTag(tagId),
+                onOpenSettings: () => UI.toggleModal('settingsModal', true),
+                onCloseSettings: () => UI.toggleModal('settingsModal', false),
+                onSaveSettings: () => this.saveSettings(),
+                onStartAssessment: () => this.startAssessment(),
+                onSend: () => this.handleChat(),
+                onSaveArchive: () => this.saveArchive(),
+                onNewChat: () => this.newChat(),
+                onLoadArchive: (id) => this.loadArchive(id),
+                onDeleteArchive: (id) => this.deleteArchive(id)
+            });
+
+            UI.writeSettings(State.settings);
+            syncKeywordUI();
+            UI.renderArchives(Archive.getAll(), State.activeArchiveId);
+            UI.lockChat();
+            updateStatusFromState();
+        },
+
+        toggleTag(tagId) {
+            if (State.phase !== 'idle') return;
+
+            if (State.selectedTagIds.includes(tagId)) {
+                State.selectedTagIds = State.selectedTagIds.filter((id) => id !== tagId);
+            } else {
+                if (State.selectedTagIds.length >= Config.limits.maxTags) {
+                    alert(`最多选择 ${Config.limits.maxTags} 个关键词。`);
+                    return;
+                }
+                State.selectedTagIds = [...State.selectedTagIds, tagId];
+            }
+
+            syncKeywordUI();
+        },
+
+        saveSettings() {
+            const next = UI.readSettings();
+            State.settings = {
+                apiBase: next.apiBase || Config.defaults.apiBase,
+                apiKey: next.apiKey || '',
+                assessModel: next.assessModel || Config.defaults.assessModel,
+                therapyModel: next.therapyModel || Config.defaults.therapyModel,
+                intakeTurns: clamp(toInt(next.intakeTurns, Config.defaults.intakeTurns), 2, 8),
+                reassessEvery: clamp(toInt(next.reassessEvery, Config.defaults.reassessEvery), 3, 12)
+            };
+            persistSettings();
+            UI.writeSettings(State.settings);
+            UI.toggleModal('settingsModal', false);
+            updateStatusFromState();
+        },
+
+        async startAssessment() {
+            if (State.isBusy || State.phase !== 'idle') return;
+            if (State.selectedTagIds.length < Config.limits.minTags) return;
+            if (!ensureApiReady()) return;
+
+            setBusy(true);
+            try {
+                await startIntakeFlow();
+            } finally {
+                setBusy(false);
+            }
+        },
+
+        async handleChat() {
+            if (State.isBusy || State.phase === 'idle') return;
+            const text = UI.els.input.value.trim();
+            if (!text) return;
+
+            UI.els.input.value = '';
+            addDisplayMessage(text, 'user');
+            State.history.push({ role: 'user', content: text });
+            State.totalUserTurns += 1;
+
+            setBusy(true);
+            try {
+                if (State.phase === 'intake') {
+                    State.intakeTurnsCompleted += 1;
+                    updateStatusFromState();
+
+                    if (State.intakeTurnsCompleted >= State.settings.intakeTurns) {
+                        await finishInitialAssessment();
+                    } else {
+                        await streamAssistantReply({
+                            model: State.settings.assessModel,
+                            messages: State.history,
+                            temperature: Config.defaults.assessTemperature,
+                            errorPrefix: '建档评估中断'
+                        });
+                    }
+                } else if (State.phase === 'therapy') {
+                    State.therapyTurnsSinceReview += 1;
+                    await maybeReassessBeforeTherapyReply();
+                    rebuildTherapyContext();
+                    updateStatusFromState();
+
+                    await streamAssistantReply({
+                        model: State.settings.therapyModel,
+                        messages: State.history,
+                        temperature: Config.defaults.therapyTemperature,
+                        errorPrefix: '疗愈对话中断'
+                    });
+                }
+            } finally {
+                setBusy(false);
+                updateStatusFromState();
+            }
+        },
+
+        saveArchive() {
+            if (Archive.saveCurrent()) {
+                UI.renderArchives(Archive.getAll(), State.activeArchiveId);
+            }
+        },
+
+        loadArchive(id) {
+            const archive = Archive.find(id);
+            if (!archive) return;
+
+            restoreSession(archive.state);
+            State.activeArchiveId = archive.id;
+
+            syncKeywordUI();
+            UI.renderMessages(State.displayMessages);
+
+            if (State.latestReport) UI.showReport(State.latestReport, State.reports);
+            else UI.hideReport();
+
+            if (State.phase === 'idle') UI.lockChat();
+            else UI.unlockChat();
+
+            UI.renderArchives(Archive.getAll(), State.activeArchiveId);
+            updateStatusFromState();
+        },
+
+        deleteArchive(id) {
+            Archive.remove(id);
+            UI.renderArchives(Archive.getAll(), State.activeArchiveId);
+        },
+
+        newChat() {
+            resetSession();
+            syncKeywordUI();
+            UI.clearMessages();
+            UI.hideReport();
+            UI.lockChat();
+            UI.renderArchives(Archive.getAll(), State.activeArchiveId);
+            updateStatusFromState();
+        }
+    };
+
+    window.App = App;
+    window.addEventListener('DOMContentLoaded', () => App.init());
+})();
