@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -9,130 +10,301 @@
     <style>
         :root {
             --bg-deep: #080c14;
-            --amber-glow: #F59E0B;
+            --amber-glow: #f59e0b;
             --glass: rgba(20, 30, 45, 0.6);
             --border-light: rgba(255, 255, 255, 0.08);
         }
-        body { background: var(--bg-deep); color: #FFFBEB; font-family: 'Inter', sans-serif; overflow: hidden; }
-        #canvasBg { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
-        
-        .glass-panel { 
-            background: var(--glass); 
-            backdrop-filter: blur(20px); 
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--border-light); 
-            border-radius: 16px; 
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+
+        body {
+            background: var(--bg-deep);
+            color: #fffbeb;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
         }
-        
-        .chat-scroll::-webkit-scrollbar { width: 4px; }
-        .chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        
-        .tag-btn { background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); transition: all 0.2s; }
-        .tag-btn:hover { border-color: var(--amber-glow); background: rgba(245, 158, 11, 0.1); transform: translateY(-1px); }
-        .tag-active { background: var(--amber-glow) !important; color: #000 !important; font-weight: bold; box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
-        
-        @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-        .msg-anim { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        
-        /* Loading Dot Animation */
-        .typing-dot { width: 6px; height: 6px; background-color: rgba(255,255,255,0.6); border-radius: 50%; display: inline-block; animation: typing 1.4s infinite ease-in-out both; margin: 0 2px; }
+
+        #canvasBg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .glass-panel {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-light);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .chat-scroll::-webkit-scrollbar,
+        .panel-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .chat-scroll::-webkit-scrollbar-thumb,
+        .panel-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .tag-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-light);
+            transition: all 0.2s ease;
+        }
+
+        .tag-btn:hover {
+            border-color: var(--amber-glow);
+            background: rgba(245, 158, 11, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .tag-active {
+            background: rgba(245, 158, 11, 0.9) !important;
+            color: #000 !important;
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);
+        }
+
+        .archive-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            transition: all 0.2s ease;
+        }
+
+        .archive-card:hover {
+            border-color: rgba(245, 158, 11, 0.35);
+            background: rgba(245, 158, 11, 0.08);
+        }
+
+        .archive-card.active {
+            border-color: rgba(245, 158, 11, 0.55);
+            box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2) inset;
+        }
+
+        .focus-chip {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.18);
+            color: rgba(209, 250, 229, 0.95);
+            padding: 8px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        .track-row {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 10px 12px;
+        }
+
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .msg-anim {
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background-color: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            display: inline-block;
+            animation: typing 1.4s infinite ease-in-out both;
+            margin: 0 2px;
+        }
+
         .typing-dot:nth-child(1) { animation-delay: -0.32s; }
         .typing-dot:nth-child(2) { animation-delay: -0.16s; }
-        @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
 
-        /* Modal */
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
         .modal { display: none; }
         .modal.active { display: flex; animation: fadeIn 0.2s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        
-        /* Progress Bar */
-        .progress-bar { transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .progress-bar {
+            transition: width 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col p-4 md:p-6 relative">
-    <!-- 城市天际线与暴雨画布 -->
     <canvas id="canvasBg"></canvas>
 
-    <!-- 顶部导航 -->
     <header class="relative z-10 flex justify-between items-center mb-6 px-2">
         <div>
             <h1 class="text-2xl font-bold tracking-tight">避雨檐 <span class="text-amber-500 font-light">ShelterAI</span></h1>
-            <p class="text-[10px] opacity-50 tracking-widest mt-1">DUAL-MODEL PSYCHOLOGICAL FRAMEWORK V3</p>
+            <p class="text-[10px] opacity-50 tracking-widest mt-1">DUAL-MODEL PSYCHOLOGICAL FRAMEWORK V4</p>
         </div>
         <div class="flex items-center gap-4">
             <div id="statusTag" class="hidden md:flex items-center px-4 py-1.5 glass-panel rounded-full text-[11px] opacity-80 transition-all">
                 <span id="statusDot" class="w-1.5 h-1.5 rounded-full bg-gray-500 mr-2"></span>
-                <span id="statusLabel">等待选择方向...</span>
+                <span id="statusLabel">等待选择建档方向...</span>
             </div>
-            <button onclick="UI.toggleModal('settingsModal')" class="glass-panel p-2.5 hover:bg-white/10 transition-colors text-white/70 hover:text-white group">
+            <button id="btnOpenSettings" class="glass-panel p-2.5 hover:bg-white/10 transition-colors text-white/70 hover:text-white group">
                 <i class="fas fa-cog group-hover:rotate-90 transition-transform duration-300"></i>
             </button>
         </div>
     </header>
 
     <main class="relative z-10 flex-grow flex flex-col md:flex-row gap-6 overflow-hidden max-w-7xl mx-auto w-full">
-        <!-- 左侧面板 -->
-        <aside class="w-full md:w-80 flex flex-col gap-4 shrink-0">
-            <!-- 阶段一：关键词选择 -->
-            <div id="panelKeywords" class="glass-panel p-6 flex flex-col transition-all duration-500">
-                <h2 class="text-amber-500 text-[11px] font-bold tracking-widest mb-1 flex items-center">
-                    <i class="fas fa-compass mr-2"></i> STEP 1: 确定方向
-                </h2>
-                <p class="text-xs text-white/40 mb-5">选择一个最贴近你当下感受的词汇，我们将进行简单的评估。</p>
-                <div id="tagContainer" class="flex flex-col gap-3 mb-6">
-                    <!-- JS动态注入 -->
+        <aside class="w-full md:w-80 flex flex-col gap-4 shrink-0 min-h-0">
+            <div id="panelKeywords" class="glass-panel p-6 flex flex-col flex-1 min-h-0 transition-all duration-500">
+                <div class="flex items-start justify-between gap-3 mb-1">
+                    <div>
+                        <h2 class="text-amber-500 text-[11px] font-bold tracking-widest flex items-center">
+                            <i class="fas fa-compass mr-2"></i> STEP 1: 关键词定制
+                        </h2>
+                        <p class="text-xs text-white/40 mt-1">从当代心理议题里选 1 到 5 个关键词，组合成你的建档风格。</p>
+                    </div>
+                    <div id="tagCounter" class="text-[10px] text-white/60 px-2 py-1 rounded-full bg-white/5 border border-white/10 shrink-0">已选 0/5</div>
                 </div>
+
+                <div id="selectedTagPreview" class="text-[11px] text-amber-100/70 mt-3 mb-4 min-h-[18px]"></div>
+
+                <div id="tagContainer" class="grid grid-cols-2 gap-2 panel-scroll overflow-y-auto pr-1 min-h-0 mb-5">
+                    <!-- JS 动态注入 -->
+                </div>
+
                 <button id="btnStartAssess" disabled class="w-full bg-white/5 border border-white/10 text-white/30 py-3 rounded-xl text-xs font-bold transition-all cursor-not-allowed mt-auto">
-                    请先选择一个词汇
+                    请选择 1 到 5 个关键词
                 </button>
             </div>
 
-            <!-- 阶段三：可视化诊断报告 (初始隐藏) -->
-            <div id="panelReport" class="glass-panel p-6 flex-col hidden opacity-0 transition-opacity duration-500 h-full">
-                <h2 class="text-emerald-400 text-[11px] font-bold tracking-widest mb-1 flex items-center">
-                    <i class="fas fa-chart-radar mr-2"></i> 状态评估画像
-                </h2>
-                <p class="text-xs text-white/40 mb-6">基于初步沟通生成的诊断摘要</p>
-                
-                <div class="space-y-5 flex-grow">
+            <div id="panelReport" class="glass-panel p-6 flex-col hidden opacity-0 transition-opacity duration-500 flex-1 min-h-0 overflow-hidden">
+                <div class="flex items-start justify-between gap-3 mb-2">
                     <div>
-                        <div class="flex justify-between text-xs mb-1"><span class="text-white/70">心理压力指数</span><span id="scoreStress" class="font-bold text-amber-400">0/100</span></div>
+                        <h2 class="text-emerald-400 text-[11px] font-bold tracking-widest flex items-center">
+                            <i class="fas fa-chart-radar mr-2"></i> 状态评估画像
+                        </h2>
+                        <p class="text-xs text-white/40 mt-1">建档初评 + 定期追踪的动态心理快照</p>
+                    </div>
+                    <div id="riskBadge" class="px-3 py-1 rounded-full text-[10px] tracking-widest uppercase bg-emerald-500/12 text-emerald-300 border border-emerald-500/25">风险 low</div>
+                </div>
+
+                <div class="flex items-center justify-between text-[11px] text-white/45 mb-4">
+                    <span id="reportStage">状态追踪</span>
+                    <span id="reportUpdatedAt">--</span>
+                </div>
+
+                <div id="riskAlert" class="hidden mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-[11px] text-red-100/90"></div>
+
+                <div class="panel-scroll overflow-y-auto pr-1 space-y-5 flex-1">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1"><span class="text-white/70">压力负荷</span><span id="scoreStress" class="font-bold text-amber-400">0/100</span></div>
                         <div class="w-full bg-black/40 h-1.5 rounded-full overflow-hidden">
-                            <div id="barStress" class="bg-gradient-to-r from-amber-500 to-red-500 h-full progress-bar" style="width: 0%"></div>
+                            <div id="barStress" class="h-full progress-bar bg-gradient-to-r from-amber-500 to-red-500" style="width: 0%"></div>
                         </div>
                     </div>
+
                     <div>
-                        <div class="flex justify-between text-xs mb-1"><span class="text-white/70">情绪内耗程度</span><span id="scoreFriction" class="font-bold text-indigo-400">0/100</span></div>
+                        <div class="flex justify-between text-xs mb-1"><span class="text-white/70">情绪内耗</span><span id="scoreFriction" class="font-bold text-indigo-300">0/100</span></div>
                         <div class="w-full bg-black/40 h-1.5 rounded-full overflow-hidden">
-                            <div id="barFriction" class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full progress-bar" style="width: 0%"></div>
+                            <div id="barFriction" class="h-full progress-bar bg-gradient-to-r from-indigo-500 to-violet-500" style="width: 0%"></div>
                         </div>
                     </div>
-                    
+
+                    <div>
+                        <div class="flex justify-between text-xs mb-1"><span class="text-white/70">风险水平</span><span id="scoreRisk" class="font-bold text-orange-300">0/100</span></div>
+                        <div class="w-full bg-black/40 h-1.5 rounded-full overflow-hidden">
+                            <div id="barRisk" class="h-full progress-bar bg-gradient-to-r from-orange-500 to-rose-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-xs mb-1"><span class="text-white/70">恢复弹性</span><span id="scoreResilience" class="font-bold text-emerald-300">0/100</span></div>
+                        <div class="w-full bg-black/40 h-1.5 rounded-full overflow-hidden">
+                            <div id="barResilience" class="h-full progress-bar bg-gradient-to-r from-emerald-500 to-teal-400" style="width: 0%"></div>
+                        </div>
+                    </div>
+
                     <div class="pt-4 border-t border-white/5">
-                        <div class="text-[10px] text-white/40 mb-1 uppercase">核心痛点识别</div>
-                        <div id="txtCore" class="text-sm font-medium leading-relaxed text-emerald-100">分析中...</div>
+                        <div class="text-[10px] text-white/40 mb-1 uppercase">本次摘要</div>
+                        <div id="txtSummary" class="text-sm leading-relaxed text-emerald-100">尚未生成</div>
                     </div>
+
                     <div>
-                        <div class="text-[10px] text-white/40 mb-1 uppercase">当前认知状态</div>
-                        <div id="txtCognitive" class="text-xs leading-relaxed text-white/70">分析中...</div>
+                        <div class="text-[10px] text-white/40 mb-1 uppercase">核心痛点</div>
+                        <div id="txtCore" class="text-xs leading-relaxed text-white/75">尚未生成</div>
+                    </div>
+
+                    <div>
+                        <div class="text-[10px] text-white/40 mb-1 uppercase">认知模式</div>
+                        <div id="txtCognitive" class="text-xs leading-relaxed text-white/75">尚未生成</div>
+                    </div>
+
+                    <div>
+                        <div class="text-[10px] text-white/40 mb-1 uppercase">当前陪伴焦点</div>
+                        <div id="txtSupportFocus" class="text-xs leading-relaxed text-white/75">尚未生成</div>
+                    </div>
+
+                    <div>
+                        <div class="text-[10px] text-white/40 mb-1 uppercase">建议疗愈风格</div>
+                        <div id="txtStyle" class="text-xs leading-relaxed text-white/75">尚未生成</div>
+                    </div>
+
+                    <div>
+                        <div class="text-[10px] text-white/40 mb-2 uppercase">下一步建议</div>
+                        <div id="listNextSteps" class="space-y-2"></div>
+                    </div>
+
+                    <div>
+                        <div class="text-[10px] text-white/40 mb-1 uppercase">下次复评重点</div>
+                        <div id="txtFollowUp" class="text-xs leading-relaxed text-white/75">尚未生成</div>
+                    </div>
+
+                    <div class="pt-4 border-t border-white/5">
+                        <div class="text-[10px] text-white/40 mb-2 uppercase">追踪记录</div>
+                        <div id="reportHistoryList" class="space-y-2"></div>
                     </div>
                 </div>
-                
-                <div class="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-200/80 flex items-start">
-                    <i class="fas fa-info-circle mt-0.5 mr-2"></i>
-                    <span>已无缝切换至深度疗愈模型。后续对话将基于此报告展开。</span>
+            </div>
+
+            <div class="glass-panel p-4 shrink-0">
+                <div class="mb-3">
+                    <div class="text-[11px] font-bold tracking-widest text-white/70">会话存档</div>
+                    <p class="text-[10px] text-white/35 mt-1">对话可随时暂停存档，下次继续、删除，或开启新的会话。</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <button id="btnSaveArchive" class="bg-white/8 border border-white/10 text-white/80 text-[11px] font-bold py-2.5 rounded-xl hover:bg-white/12 transition-colors">
+                        <i class="fas fa-box-archive mr-1.5"></i> 存档当前
+                    </button>
+                    <button id="btnNewChat" class="bg-amber-500/90 text-slate-900 text-[11px] font-bold py-2.5 rounded-xl hover:bg-amber-400 transition-colors">
+                        <i class="fas fa-plus mr-1.5"></i> 新对话
+                    </button>
+                </div>
+
+                <div id="archiveList" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    <!-- JS 动态注入 -->
                 </div>
             </div>
         </aside>
 
-        <!-- 右侧：对话区域 -->
         <section class="flex-grow glass-panel flex flex-col overflow-hidden relative">
-            <!-- 遮罩层，未开始前阻止输入 -->
             <div id="chatOverlay" class="absolute inset-0 z-20 bg-black/40 backdrop-blur-sm flex items-center justify-center transition-opacity duration-500">
                 <div class="text-center">
-                    <i class="fas fa-coffee text-4xl text-white/20 mb-4"></i>
-                    <p class="text-white/60 text-sm">请先在左侧选择你关心的方向</p>
+                    <i class="fas fa-cloud-rain text-4xl text-white/20 mb-4"></i>
+                    <p id="overlayText" class="text-white/60 text-sm">请先在左侧选择你想聚焦的心理关键词</p>
                 </div>
             </div>
 
@@ -142,7 +314,7 @@
 
             <div class="p-4 bg-black/30 border-t border-white/5 flex gap-3 items-center z-10">
                 <div class="flex-grow flex items-center bg-white/5 border border-white/10 rounded-2xl px-4 py-1.5 focus-within:border-amber-500/50 transition-colors">
-                    <input type="text" id="userInput" placeholder="此时此刻的感受..." disabled class="bg-transparent flex-grow outline-none text-sm py-2.5 text-white/90 disabled:opacity-50">
+                    <input type="text" id="userInput" placeholder="把此时此刻最真实的感受说出来..." disabled class="bg-transparent flex-grow outline-none text-sm py-2.5 text-white/90 disabled:opacity-50">
                 </div>
                 <button id="sendBtn" disabled class="w-12 h-12 bg-amber-500 text-slate-900 rounded-2xl flex items-center justify-center transition-all hover:bg-amber-400 disabled:opacity-30 disabled:cursor-not-allowed">
                     <i class="fas fa-paper-plane"></i>
@@ -151,434 +323,60 @@
         </section>
     </main>
 
-    <!-- 设置弹窗 (API Config) -->
     <div id="settingsModal" class="modal fixed inset-0 z-50 items-center justify-center bg-black/60 backdrop-blur-md">
-        <div class="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl transform scale-100 transition-transform">
+        <div class="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-lg p-6 shadow-2xl transform scale-100 transition-transform">
             <div class="flex justify-between items-center mb-6">
-                <h3 class="text-lg font-bold">API 设置与模型挂载</h3>
-                <button onclick="UI.toggleModal('settingsModal')" class="text-white/40 hover:text-white"><i class="fas fa-times"></i></button>
+                <h3 class="text-lg font-bold">配置中心</h3>
+                <button id="btnCloseSettings" class="text-white/40 hover:text-white"><i class="fas fa-times"></i></button>
             </div>
-            
+
             <div class="space-y-4">
                 <div>
                     <label class="text-xs text-white/50 block mb-1">Base URL</label>
-                    <input type="text" id="cfgBase" value="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
+                    <input type="text" id="cfgBase" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
                 </div>
+
                 <div>
                     <label class="text-xs text-white/50 block mb-1">API Key</label>
                     <input type="password" id="cfgKey" placeholder="sk-..." class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
                 </div>
-                
+
                 <div class="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
                     <div>
-                        <label class="text-xs text-amber-500/80 font-bold block mb-1"><i class="fas fa-stethoscope mr-1"></i> 状态评估模型</label>
-                        <input type="text" id="cfgAssess" value="qwen-turbo-latest" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-amber-100/80">
-                        <p class="text-[9px] text-white/30 mt-1">负责前置多轮问询与图表生成</p>
+                        <label class="text-xs text-amber-500/80 font-bold block mb-1"><i class="fas fa-stethoscope mr-1"></i> 评估追踪模型</label>
+                        <input type="text" id="cfgAssess" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-amber-100/80">
+                        <p class="text-[9px] text-white/30 mt-1">负责建档、复评、风险跟踪</p>
                     </div>
                     <div>
-                        <label class="text-xs text-emerald-500/80 font-bold block mb-1"><i class="fas fa-leaf mr-1"></i> 深度疗愈模型</label>
-                        <input type="text" id="cfgTherapy" value="qwen-max" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-emerald-500 text-emerald-100/80">
-                        <p class="text-[9px] text-white/30 mt-1">负责评估后的沉浸式对话支持</p>
+                        <label class="text-xs text-emerald-500/80 font-bold block mb-1"><i class="fas fa-leaf mr-1"></i> 疗愈对话模型</label>
+                        <input type="text" id="cfgTherapy" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-emerald-500 text-emerald-100/80">
+                        <p class="text-[9px] text-white/30 mt-1">负责持续心理支持与陪伴</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
+                    <div>
+                        <label class="text-xs text-white/50 block mb-1">初评轮次</label>
+                        <input type="number" id="cfgIntakeTurns" min="2" max="8" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
+                        <p class="text-[9px] text-white/30 mt-1">首次建档前，先聊几轮再出画像</p>
+                    </div>
+                    <div>
+                        <label class="text-xs text-white/50 block mb-1">复评频率</label>
+                        <input type="number" id="cfgReassessEvery" min="3" max="12" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
+                        <p class="text-[9px] text-white/30 mt-1">每收到几次用户输入后追踪一次</p>
                     </div>
                 </div>
             </div>
-            
+
             <div class="mt-8 flex justify-end">
-                <button onclick="App.saveSettings()" class="bg-white/10 hover:bg-white/20 text-white px-5 py-2 rounded-xl text-xs font-bold transition-colors">保存并关闭</button>
+                <button id="btnSaveSettings" class="bg-white/10 hover:bg-white/20 text-white px-5 py-2 rounded-xl text-xs font-bold transition-colors">保存并关闭</button>
             </div>
         </div>
     </div>
 
-    <!-- 逻辑代码 -->
-    <script>
-        /**
-         * 模块一：全局配置与状态机
-         */
-        const Config = {
-            api: {
-                base: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-                key: "",
-                assessModel: "qwen-turbo-latest",
-                therapyModel: "qwen-max"
-            },
-            tags: [
-                { id: 'family', label: '原生家庭', desc: '童年印记、边界感模糊、父母控制' },
-                { id: 'existential', label: '存在主义', desc: '意义匮乏、虚无感、孤独与死亡焦虑' },
-                { id: 'career', label: '职场内耗', desc: '自我压榨、价值感剥夺、人际疲惫' },
-                { id: 'intimacy', label: '亲密关系', desc: '依恋回避/焦虑、沟通障碍、背叛创伤' }
-            ],
-            // 核心提示词：强制平实、无动作描写
-            prompts: {
-                rule: "【绝对禁止】：不要在回复中使用括号描写动作（如不要说‘递上一杯茶’、‘微笑着’）。【语气要求】：你是一个真正的朋友和专业的心理咨询师。请用大白话、口语化的方式交流，自然、平实、有温度，千万不要像教科书或机器那样说教。",
-                
-                assessSystem: (tag) => `你是一个心理评估AI。用户当前关心的话题是【${tag}】。\n你的任务是通过两三轮对话，温和地了解用户的具体痛点。每次只问一个简短、自然的问题。\n${Config.prompts.rule}`,
-                
-                assessJsonPrompt: "请停止对话。根据之前的交流，对用户进行评估。严格只输出一个合法的 JSON 字符串，不要任何 Markdown 标记。格式如下：\n{\"stress\": 0到100的整数,\"friction\": 0到100的整数,\"coreIssue\": \"一句话概括核心痛点\",\"cognitive\": \"客观描述用户目前的认知盲区或状态\"}",
-                
-                therapySystem: (json) => `你是一个负责深度疗愈的心理专家。\n以下是对该用户的初步状态评估：\n核心痛点：${json.coreIssue}\n压力指数：${json.stress}\n认知状态：${json.cognitive}\n请结合以上评估结果，顺着用户的话题继续深入交流，提供支持和引导。\n${Config.prompts.rule}`
-            }
-        };
-
-        const State = {
-            phase: 0, // 0: 待机, 1: 评估中(聊2轮), 2: 疗愈中
-            assessTurns: 0,
-            maxAssessTurns: 2,
-            selectedTag: null,
-            history: [] // 统一存储对话上下文
-        };
-
-        /**
-         * 模块二：网络请求中心
-         */
-        const Api = {
-            async chat(model, messages) {
-                if (!Config.api.key) {
-                    UI.toggleModal('settingsModal');
-                    throw new Error("请先在设置中配置 API Key。");
-                }
-                const res = await fetch(Config.api.base, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Config.api.key}` },
-                    body: JSON.stringify({ model: model, messages: messages, temperature: 0.7 })
-                });
-                if (!res.ok) {
-                    const err = await res.json();
-                    throw new Error(err.error?.message || "网络请求异常");
-                }
-                const data = await res.json();
-                return data.choices[0].message.content;
-            }
-        };
-
-        /**
-         * 模块三：界面与特效
-         */
-        const UI = {
-            els: {
-                tagContainer: document.getElementById('tagContainer'),
-                chatBox: document.getElementById('chatBox'),
-                input: document.getElementById('userInput'),
-                sendBtn: document.getElementById('sendBtn'),
-                statusLabel: document.getElementById('statusLabel'),
-                statusDot: document.getElementById('statusDot'),
-                chatOverlay: document.getElementById('chatOverlay'),
-                btnStartAssess: document.getElementById('btnStartAssess')
-            },
-
-            init() {
-                this.renderTags();
-                this.initCanvasBg();
-            },
-
-            toggleModal(id) {
-                const m = document.getElementById(id);
-                m.classList.toggle('active');
-            },
-
-            renderTags() {
-                this.els.tagContainer.innerHTML = '';
-                Config.tags.forEach(tag => {
-                    const div = document.createElement('div');
-                    div.className = 'tag-btn p-3 rounded-xl cursor-pointer text-left';
-                    div.innerHTML = `
-                        <div class="text-sm font-bold text-white/90">${tag.label}</div>
-                        <div class="text-[10px] text-white/40 mt-1">${tag.desc}</div>
-                    `;
-                    div.onclick = () => {
-                        if(State.phase > 0) return; // 开始后禁止切换
-                        document.querySelectorAll('.tag-btn').forEach(el => el.classList.remove('tag-active'));
-                        div.classList.add('tag-active');
-                        State.selectedTag = tag.label;
-                        
-                        this.els.btnStartAssess.disabled = false;
-                        this.els.btnStartAssess.className = "w-full bg-amber-500 text-slate-900 py-3 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] shadow-lg shadow-amber-500/20 mt-auto";
-                        this.els.btnStartAssess.innerText = "开启评估引擎";
-                    };
-                    this.els.tagContainer.appendChild(div);
-                });
-            },
-
-            addMessage(text, role, isSystem = false) {
-                const wrap = document.createElement('div');
-                wrap.className = `flex ${isSystem ? 'justify-center' : (role === 'user' ? 'justify-end' : 'justify-start')} msg-anim`;
-                
-                if (isSystem) {
-                    wrap.innerHTML = `<div class="text-[10px] text-white/30 tracking-widest uppercase my-4">--- ${text} ---</div>`;
-                } else {
-                    const contentCls = role === 'user' 
-                        ? 'bg-white/10 border border-white/20 text-white rounded-tr-none' 
-                        : 'bg-black/40 border border-amber-500/20 text-white/90 rounded-tl-none';
-                    
-                    wrap.innerHTML = `<div class="max-w-[85%] p-4 rounded-2xl text-[13px] leading-relaxed shadow-xl ${contentCls}">${text}</div>`;
-                }
-                
-                this.els.chatBox.appendChild(wrap);
-                this.els.chatBox.scrollTop = this.els.chatBox.scrollHeight;
-                return wrap; // 方便后续修改（如打字机）
-            },
-
-            addTyping() {
-                const wrap = document.createElement('div');
-                wrap.className = `flex justify-start msg-anim id-typing`;
-                wrap.innerHTML = `
-                    <div class="p-4 rounded-2xl rounded-tl-none bg-black/40 border border-white/5">
-                        <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
-                    </div>`;
-                this.els.chatBox.appendChild(wrap);
-                this.els.chatBox.scrollTop = this.els.chatBox.scrollHeight;
-                return wrap;
-            },
-
-            removeTyping() {
-                const t = document.querySelector('.id-typing');
-                if(t) t.remove();
-            },
-
-            updateStatus(text, type = 'idle') {
-                this.els.statusLabel.innerText = text;
-                const colors = {
-                    'idle': 'bg-gray-500 shadow-none',
-                    'assess': 'bg-amber-500 shadow-[0_0_8px_#F59E0B] animate-pulse',
-                    'therapy': 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
-                };
-                this.els.statusDot.className = `w-1.5 h-1.5 rounded-full mr-2 ${colors[type]}`;
-            },
-
-            unlockChat() {
-                this.els.chatOverlay.style.opacity = '0';
-                setTimeout(() => this.els.chatOverlay.classList.add('hidden'), 500);
-                this.els.input.disabled = false;
-                this.els.sendBtn.disabled = false;
-                this.els.input.focus();
-            },
-
-            showReport(json) {
-                // 隐藏选择词，展示报告
-                document.getElementById('panelKeywords').classList.add('hidden');
-                const p = document.getElementById('panelReport');
-                p.classList.remove('hidden');
-                
-                // 动画显示数据
-                setTimeout(() => {
-                    p.classList.remove('opacity-0');
-                    document.getElementById('scoreStress').innerText = `${json.stress}/100`;
-                    document.getElementById('barStress').style.width = `${json.stress}%`;
-                    
-                    document.getElementById('scoreFriction').innerText = `${json.friction}/100`;
-                    document.getElementById('barFriction').style.width = `${json.friction}%`;
-                    
-                    document.getElementById('txtCore').innerText = json.coreIssue;
-                    document.getElementById('txtCognitive').innerText = json.cognitive;
-                }, 100);
-            },
-
-            // 绘制雨滴+城市背景
-            initCanvasBg() {
-                const canvas = document.getElementById('canvasBg');
-                const ctx = canvas.getContext('2d');
-                let w, h;
-                let drops = [];
-                let skyline = [];
-
-                const resize = () => {
-                    w = canvas.width = window.innerWidth;
-                    h = canvas.height = window.innerHeight;
-                    // 生成简易天际线
-                    skyline = [];
-                    let x = 0;
-                    while(x < w) {
-                        let bWidth = 30 + Math.random() * 80;
-                        let bHeight = h * 0.1 + Math.random() * h * 0.25;
-                        skyline.push({x: x, w: bWidth, h: bHeight});
-                        x += bWidth;
-                    }
-                };
-                window.addEventListener('resize', resize);
-                resize();
-
-                // 初始化雨滴 (更密集，更快速)
-                for(let i=0; i<150; i++) {
-                    drops.push({
-                        x: Math.random() * w,
-                        y: Math.random() * h,
-                        l: Math.random() * 25 + 10,
-                        s: Math.random() * 15 + 10,
-                        a: Math.random() * 0.4 + 0.1
-                    });
-                }
-
-                const animate = () => {
-                    // 暗色拖影
-                    ctx.fillStyle = 'rgba(8, 12, 20, 0.4)';
-                    ctx.fillRect(0, 0, w, h);
-
-                    // 画城市天际线
-                    ctx.fillStyle = '#0f172a'; // Slate-900 颜色
-                    skyline.forEach(b => {
-                        ctx.fillRect(b.x, h - b.h, b.w, b.h);
-                        // 随机几个窗户
-                        if(Math.random() > 0.98) {
-                            ctx.fillStyle = 'rgba(245, 158, 11, 0.3)'; // 微弱的灯光
-                            ctx.fillRect(b.x + b.w/2, h - b.h + 20, 4, 4);
-                            ctx.fillStyle = '#0f172a';
-                        }
-                    });
-
-                    // 画雨滴
-                    drops.forEach(d => {
-                        ctx.beginPath();
-                        ctx.strokeStyle = `rgba(255, 255, 255, ${d.a})`;
-                        ctx.lineWidth = 1.5;
-                        ctx.moveTo(d.x, d.y);
-                        ctx.lineTo(d.x - d.s/3, d.y + d.l); // 稍微带点风的倾斜
-                        ctx.stroke();
-                        
-                        d.y += d.s;
-                        d.x -= d.s/3;
-                        if(d.y > h) {
-                            d.y = -d.l;
-                            d.x = Math.random() * w + w*0.2; // 补偿倾斜带来的偏移
-                        }
-                    });
-                    requestAnimationFrame(animate);
-                };
-                animate();
-            }
-        };
-
-        /**
-         * 模块四：核心业务流程控制器
-         */
-        const App = {
-            init() {
-                UI.init();
-                this.bindEvents();
-                // 尝试读取本地配置
-                const savedKey = localStorage.getItem('shelter_apikey');
-                if(savedKey) {
-                    Config.api.key = savedKey;
-                    document.getElementById('cfgKey').value = savedKey;
-                }
-            },
-
-            bindEvents() {
-                UI.els.btnStartAssess.onclick = () => this.startAssessment();
-                UI.els.sendBtn.onclick = () => this.handleChat();
-                UI.els.input.onkeypress = (e) => { if(e.key === 'Enter') this.handleChat(); };
-            },
-
-            saveSettings() {
-                Config.api.base = document.getElementById('cfgBase').value.trim();
-                Config.api.key = document.getElementById('cfgKey').value.trim();
-                Config.api.assessModel = document.getElementById('cfgAssess').value.trim();
-                Config.api.therapyModel = document.getElementById('cfgTherapy').value.trim();
-                
-                if(Config.api.key) localStorage.setItem('shelter_apikey', Config.api.key);
-                UI.toggleModal('settingsModal');
-            },
-
-            async startAssessment() {
-                if(!Config.api.key) {
-                    alert("请先配置 API Key");
-                    UI.toggleModal('settingsModal');
-                    return;
-                }
-
-                State.phase = 1;
-                UI.unlockChat();
-                UI.updateStatus(`[${Config.api.assessModel}] 评估中...`, 'assess');
-                UI.els.btnStartAssess.innerText = "评估运行中";
-                UI.els.btnStartAssess.disabled = true;
-
-                // 写入 System Prompt
-                State.history.push({ role: "system", content: Config.prompts.assessSystem(State.selectedTag) });
-                
-                // 让 AI 率先发话
-                UI.addTyping();
-                try {
-                    const reply = await Api.chat(Config.api.assessModel, State.history);
-                    UI.removeTyping();
-                    UI.addMessage(reply, 'ai');
-                    State.history.push({ role: "assistant", content: reply });
-                } catch(e) {
-                    UI.removeTyping();
-                    UI.addMessage("模型唤醒失败: " + e.message, 'ai');
-                }
-            },
-
-            async handleChat() {
-                const text = UI.els.input.value.trim();
-                if(!text) return;
-
-                UI.els.input.value = '';
-                UI.addMessage(text, 'user');
-                State.history.push({ role: "user", content: text });
-
-                UI.addTyping();
-
-                if (State.phase === 1) {
-                    State.assessTurns++;
-                    try {
-                        // 如果达到评估轮次，强制进行 JSON 评估
-                        if (State.assessTurns >= State.maxAssessTurns) {
-                            UI.updateStatus("正在生成诊断画像...", 'assess');
-                            
-                            // 构造隐式强制评估请求（不保存到主要 history，防止污染对话）
-                            const evalPrompt = [...State.history, { role: "user", content: Config.prompts.assessJsonPrompt }];
-                            const rawJsonStr = await Api.chat(Config.api.assessModel, evalPrompt);
-                            
-                            // 提取 JSON
-                            const jsonMatch = rawJsonStr.match(/\{[\s\S]*\}/);
-                            if(!jsonMatch) throw new Error("大模型未按规范输出 JSON");
-                            const report = JSON.parse(jsonMatch[0]);
-                            
-                            // 渲染界面
-                            UI.showReport(report);
-                            UI.addMessage("评估完成，模型切换", "system", true);
-                            
-                            // 状态机切换到 Phase 2
-                            State.phase = 2;
-                            UI.updateStatus(`[${Config.api.therapyModel}] 疗愈中`, 'therapy');
-
-                            // 清理原有的 Assessment System Prompt，重塑为 Therapy Context
-                            State.history = State.history.filter(m => m.role !== 'system');
-                            State.history.unshift({ role: "system", content: Config.prompts.therapySystem(report) });
-
-                            // 让疗愈模型基于新身份回答用户的最后一句话
-                            const therapyReply = await Api.chat(Config.api.therapyModel, State.history);
-                            UI.removeTyping();
-                            UI.addMessage(therapyReply, 'ai');
-                            State.history.push({ role: "assistant", content: therapyReply });
-
-                        } else {
-                            // 正常的评估多轮对话
-                            const reply = await Api.chat(Config.api.assessModel, State.history);
-                            UI.removeTyping();
-                            UI.addMessage(reply, 'ai');
-                            State.history.push({ role: "assistant", content: reply });
-                        }
-                    } catch (e) {
-                        UI.removeTyping();
-                        UI.addMessage("评估过程受到干扰: " + e.message, 'ai');
-                    }
-                } 
-                else if (State.phase === 2) {
-                    // 阶段二：纯粹的疗愈对话
-                    try {
-                        const reply = await Api.chat(Config.api.therapyModel, State.history);
-                        UI.removeTyping();
-                        UI.addMessage(reply, 'ai');
-                        State.history.push({ role: "assistant", content: reply });
-                    } catch(e) {
-                        UI.removeTyping();
-                        UI.addMessage("思绪断开: " + e.message, 'ai');
-                    }
-                }
-            }
-        };
-
-        // 启动系统
-        window.onload = () => App.init();
-    </script>
+    <script src="./config.js" defer></script>
+    <script src="./api.js" defer></script>
+    <script src="./ui.js" defer></script>
+    <script src="./main.js" defer></script>
 </body>
 </html>
