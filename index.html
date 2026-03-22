@@ -1,235 +1,458 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>避雨檐 - 模块化架构</title>
+    <title>避雨檐 - 精神心理大模型定制</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
             --bg-deep: #0F172A;
+            --bg-gradient: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
             --amber-glow: #F59E0B;
-            --glass: rgba(255, 255, 255, 0.05);
+            --amber-soft: #FCD34D;
+            --text-warm: #FFFBEB;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
         }
-        body { background: var(--bg-deep); color: #FFFBEB; font-family: system-ui, sans-serif; overflow: hidden; }
-        #rainCanvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
-        .glass-panel { background: var(--glass); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; }
-        .chat-scroll::-webkit-scrollbar { width: 4px; }
-        .chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        .tag-active { background: var(--amber-glow) !important; color: #000 !important; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .msg-anim { animation: fadeIn 0.3s ease-out forwards; }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg-deep);
+            color: var(--text-warm);
+            font-family: 'Inter', "Microsoft YaHei", sans-serif;
+        }
+
+        /* 背景雨滴画布 */
+        #rainCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* 氛围光点 */
+        .glow-spot {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(245, 158, 11, 0.05) 0%, transparent 70%);
+            filter: blur(50px);
+            z-index: 1;
+        }
+
+        /* 磨砂玻璃面板 */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        /* 呼吸灯效果 */
+        @keyframes breathe {
+            0%, 100% { opacity: 0.6; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            background: var(--amber-glow);
+            box-shadow: 0 0 10px var(--amber-glow);
+            animation: breathe 2s infinite ease-in-out;
+        }
+
+        .keyword-tag {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .keyword-tag:hover {
+            background: rgba(245, 158, 11, 0.2);
+            border-color: var(--amber-soft);
+            transform: translateY(-2px);
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+        }
+
+        .keyword-tag.active {
+            background: var(--amber-glow);
+            color: var(--bg-deep);
+            border-color: var(--amber-glow);
+        }
+
+        /* 聊天容器 */
+        .chat-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .chat-container::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+        }
+
+        .bubble-ai {
+            background: rgba(255, 255, 255, 0.04);
+            border-left: 3px solid var(--amber-glow);
+            animation: slideUp 0.3s ease-out forwards;
+        }
+
+        .bubble-user {
+            background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+            color: white;
+            animation: slideUp 0.3s ease-out forwards;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .flow-particle {
+            position: absolute;
+            background: var(--amber-soft);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        /* 输入框聚焦 */
+        input:focus {
+            outline: none;
+            border-color: var(--amber-glow) !important;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+        }
+
+        /* 等待动画 */
+        .typing-dot {
+            width: 4px;
+            height: 4px;
+            background: var(--amber-glow);
+            border-radius: 50%;
+            display: inline-block;
+            animation: typing 1.4s infinite;
+            margin: 0 1px;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 100% { transform: translateY(0); opacity: 0.4; }
+            50% { transform: translateY(-4px); opacity: 1; }
+        }
+
+        @media (max-width: 1024px) {
+            .side-content { display: none; }
+            .main-content { width: 100% !important; }
+        }
     </style>
 </head>
-<body class="h-screen flex flex-col p-4 md:p-8">
-    <canvas id="rainCanvas"></canvas>
+<body class="flex flex-col h-screen">
 
-    <!-- 顶部导航 -->
-    <header class="relative z-10 flex justify-between items-center mb-6">
-        <div>
-            <h1 class="text-2xl font-light tracking-widest">避雨檐 <span class="text-amber-500 font-bold">.</span></h1>
-            <p class="text-[10px] opacity-40 uppercase tracking-widest">Modular AI Framework</p>
+    <canvas id="rainCanvas"></canvas>
+    
+    <div class="glow-spot top-[-100px] left-[-100px]"></div>
+    <div class="glow-spot bottom-[-100px] right-[-100px]"></div>
+
+    <header class="relative z-10 flex justify-between items-center px-8 py-6">
+        <div class="flex flex-col">
+            <h1 class="text-2xl font-light tracking-widest text-white flex items-center">
+                <span class="mr-3">避雨檐</span>
+                <span class="text-xs px-2 py-1 border border-amber-500/30 rounded text-amber-500/80 tracking-tighter uppercase">Shelter AI</span>
+            </h1>
+            <p class="text-[10px] text-white/40 mt-1 uppercase tracking-widest">阿里云大模型驱动版</p>
         </div>
-        <div class="flex items-center gap-3">
-            <input type="password" id="apiKeyInput" value="sk-76456a9801c14ee9901727f080c635f9" class="glass-panel px-4 py-2 text-xs w-48 focus:w-64 transition-all outline-none border-none">
-            <button id="initBtn" class="bg-amber-500 text-slate-900 px-6 py-2 rounded-full text-xs font-bold hover:bg-amber-400">初始化内核</button>
+
+        <div class="flex items-center space-x-4">
+            <div id="modelStatus" class="hidden md:flex items-center mr-6 px-3 py-1.5 glass-panel rounded-full text-xs text-white/70">
+                <span id="statusDot" class="status-dot"></span>
+                <span id="statusText">系统待唤醒</span>
+            </div>
+            
+            <div class="relative group flex items-center">
+                <!-- 预填了你提供的阿里云 API Key -->
+                <input type="password" id="apiKey" value="sk-76456a9801c14ee9901727f080c635f9" placeholder="API Key..." 
+                    class="bg-white/5 border border-white/10 rounded-full px-5 py-2 text-sm w-48 focus:w-64 transition-all duration-500 backdrop-blur-md">
+                <button onclick="activateAPI()" id="activateBtn" class="ml-2 px-6 py-2 rounded-full bg-amber-500 text-slate-900 text-sm font-bold hover:bg-amber-400 transition-colors shadow-lg shadow-amber-500/20">
+                    激活
+                </button>
+            </div>
         </div>
     </header>
 
-    <main class="relative z-10 flex-grow flex flex-col md:flex-row gap-6 overflow-hidden">
-        <!-- 左侧配置栏 (参考 UI.js / Engine.js 逻辑) -->
-        <aside class="w-full md:w-80 flex flex-col gap-4">
+    <main class="relative z-10 flex-grow flex flex-col md:flex-row px-8 pb-8 gap-6 overflow-hidden">
+        
+        <aside class="side-content w-full md:w-1/4 flex flex-col gap-6">
             <div class="glass-panel p-6 flex-grow flex flex-col">
-                <h2 class="text-amber-500 text-[10px] font-bold uppercase tracking-[0.2em] mb-4">情绪注能 (Tags)</h2>
-                <div id="tagContainer" class="flex flex-wrap gap-2"></div>
+                <h3 class="text-amber-500 text-sm font-medium mb-4 flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    性格与情绪注入
+                </h3>
+                <p class="text-xs text-white/50 mb-6 leading-relaxed">
+                    选择你的情绪关键词，流体注能将改变模型的交互深度与共情权重。
+                </p>
+                
+                <div class="flex flex-wrap gap-2" id="keywordContainer"></div>
+
                 <div class="mt-auto pt-6 border-t border-white/5">
-                    <div class="text-[10px] opacity-40 mb-2 uppercase">模型状态</div>
-                    <div id="statusIndicator" class="text-xs text-amber-200/50 italic font-light">等待激活...</div>
+                    <div class="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10">
+                        <p class="text-[10px] text-amber-200/60 uppercase tracking-tighter">当前适配度</p>
+                        <div class="w-full bg-white/5 h-1 rounded-full mt-2 overflow-hidden">
+                            <div id="adaptationBar" class="h-full bg-amber-500 w-0 transition-all duration-1000"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </aside>
 
-        <!-- 右侧聊天区 (参考 UI.js 逻辑) -->
-        <section class="flex-grow glass-panel flex flex-col overflow-hidden">
-            <div id="chatBox" class="chat-scroll flex-grow overflow-y-auto p-6 space-y-4">
-                <div class="flex justify-start msg-anim">
-                    <div class="max-w-[85%] bg-white/5 p-4 rounded-2xl rounded-tl-none text-sm border border-white/5">
-                        系统已启动。请先初始化内核，然后我们可以开始对话。
+        <section class="main-content w-full md:w-3/4 flex flex-col glass-panel overflow-hidden relative">
+            <div class="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-white/5 to-transparent pointer-events-none z-10"></div>
+            
+            <div id="chatBox" class="chat-container flex-grow overflow-y-auto p-8 flex flex-col space-y-6">
+                <div class="flex justify-start">
+                    <div class="bubble-ai max-w-[80%] rounded-2xl rounded-tl-none p-5 text-sm leading-relaxed text-white/90">
+                        今日心屿温度：窗外有雨，但这里有灯。我是你的心灵庇护所，今天想聊点什么？
                     </div>
                 </div>
             </div>
-            <div class="p-4 bg-black/20 border-t border-white/5 flex gap-3">
-                <input type="text" id="userInput" placeholder="在这里输入..." class="bg-transparent flex-grow outline-none text-sm px-2">
-                <button id="sendBtn" class="p-3 bg-amber-500/10 text-amber-500 rounded-xl hover:bg-amber-500 hover:text-black transition-all">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                </button>
+
+            <div class="p-6 bg-white/[0.02] border-t border-white/5">
+                <div class="flex items-center space-x-3 bg-white/5 rounded-2xl p-2 pl-4 border border-white/10">
+                    <input type="text" id="userInput" placeholder="在这里倾诉..." 
+                        class="bg-transparent flex-grow text-sm border-none focus:ring-0 py-3">
+                    <button onclick="handleSend()" id="sendBtn" class="p-3 bg-amber-500 rounded-xl text-slate-900 hover:scale-105 transition-transform disabled:opacity-50">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                    </button>
+                </div>
+                <div class="mt-3 flex justify-between text-[10px] text-white/30 px-2 uppercase tracking-widest">
+                    <span>加密线路连接中</span>
+                    <span id="tokenUsage">已适配阿里云 Qwen 内核</span>
+                </div>
             </div>
         </section>
     </main>
 
-    <!-- 模块化脚本开始 -->
-    
-    <!-- 1. Config 模块 -->
     <script>
-        const Config = {
-            api: {
-                key: "",
-                baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-                model: "qwen-plus"
-            },
-            systemPrompt: "你是一个名为避雨檐的心理大模型，擅长共情和深度交流。当前处于雨夜场景。",
-            tags: ['焦虑', '原生家庭', '职场压力', '孤独感', '社交恐惧', '自我接纳'],
-            isActivated: false
+        // --- 全局配置 ---
+        const CONFIG = {
+            apiKey: "",
+            // 阿里云官方 OpenAI 兼容接口地址
+            baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            model: "qwen-plus", // 阿里云通义千问模型名称
+            isActivated: false,
+            history: [] 
         };
-    </script>
 
-    <!-- 2. API 模块 -->
-    <script>
-        const Api = {
-            async chat(messages) {
-                if (!Config.isActivated) throw new Error("API 未激活");
-                
-                const response = await fetch(Config.api.baseUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${Config.api.key}`
-                    },
-                    body: JSON.stringify({
-                        model: Config.api.model,
-                        messages: messages,
-                        temperature: 0.7
-                    })
+        // 1. 雨滴背景动画
+        const canvas = document.getElementById('rainCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height, drops = [];
+
+        function initRain() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            drops = [];
+            for(let i = 0; i < 150; i++) {
+                drops.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    len: Math.random() * 20 + 10,
+                    speed: Math.random() * 5 + 5
                 });
+            }
+        }
 
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.message || "请求失败");
+        function drawRain() {
+            ctx.clearRect(0, 0, width, height);
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
+            ctx.lineWidth = 1;
+            drops.forEach(drop => {
+                ctx.beginPath(); ctx.moveTo(drop.x, drop.y); ctx.lineTo(drop.x, drop.y + drop.len); ctx.stroke();
+                drop.y += drop.speed;
+                if(drop.y > height) { drop.y = -drop.len; drop.x = Math.random() * width; }
+            });
+            requestAnimationFrame(drawRain);
+        }
+        initRain(); drawRain();
+
+        // 2. 情绪标签逻辑
+        const keywords = ['焦虑', '原生家庭', '职场压力', '孤独感', '自我否定', '创伤后成长', '人际关系', '抑郁情绪', '存在主义'];
+        const container = document.getElementById('keywordContainer');
+        let selectedKeywords = [];
+
+        keywords.forEach(word => {
+            const tag = document.createElement('div');
+            tag.className = 'keyword-tag px-3 py-1.5 rounded-full text-xs text-white/60 bg-white/5';
+            tag.innerText = word;
+            tag.onclick = (e) => {
+                tag.classList.toggle('active');
+                if(tag.classList.contains('active')) {
+                    selectedKeywords.push(word);
+                    createFlowEffect(e.clientX, e.clientY);
+                } else {
+                    selectedKeywords = selectedKeywords.filter(k => k !== word);
                 }
+                updateAdaptation();
+            };
+            container.appendChild(tag);
+        });
 
-                const data = await response.json();
-                return data.choices[0].message.content;
+        function updateAdaptation() {
+            const bar = document.getElementById('adaptationBar');
+            bar.style.width = Math.min(selectedKeywords.length * 20, 100) + '%';
+        }
+
+        function createFlowEffect(startX, startY) {
+            const target = document.querySelector('.main-content').getBoundingClientRect();
+            for(let i = 0; i < 5; i++) {
+                const p = document.createElement('div');
+                p.className = 'flow-particle';
+                p.style.width = '3px'; p.style.height = '3px';
+                p.style.left = startX + 'px'; p.style.top = startY + 'px';
+                document.body.appendChild(p);
+                p.animate([{opacity: 1}, {left: (target.left + target.width/2)+'px', top: (target.top + target.height/2)+'px', opacity: 0}], 
+                {duration: 800, easing: 'ease-in-out'}).onfinish = () => p.remove();
             }
-        };
-    </script>
+        }
 
-    <!-- 3. UI 模块 (包含特效和界面更新) -->
-    <script>
-        const UI = {
-            elements: {
-                chatBox: document.getElementById('chatBox'),
-                tagContainer: document.getElementById('tagContainer'),
-                status: document.getElementById('statusIndicator'),
-                input: document.getElementById('userInput'),
-                apiKeyInput: document.getElementById('apiKeyInput')
-            },
+        // 3. API 核心逻辑 (针对阿里云)
+        async function activateAPI() {
+            const keyInput = document.getElementById('apiKey');
+            const btn = document.getElementById('activateBtn');
+            if(!keyInput.value) return;
 
-            init() {
-                this.renderTags();
-                this.initRain();
-            },
+            CONFIG.apiKey = keyInput.value;
+            btn.innerText = "校验中...";
+            
+            // 延迟一秒模拟初始化
+            setTimeout(() => {
+                CONFIG.isActivated = true;
+                btn.innerText = "已就绪";
+                btn.className = "ml-2 px-6 py-2 rounded-full bg-emerald-500 text-white text-sm font-bold shadow-lg shadow-emerald-500/20";
+                document.getElementById('modelStatus').classList.remove('hidden');
+                document.getElementById('statusText').innerText = "阿里云内核已挂载";
+                addMessage("系统：通义千问 API 接入成功。避雨檐已准备好接收你的心声。", 'ai');
+            }, 800);
+        }
 
-            renderTags() {
-                Config.tags.forEach(tag => {
-                    const btn = document.createElement('button');
-                    btn.className = 'px-3 py-1.5 rounded-lg border border-white/10 text-[10px] hover:border-amber-500/50 transition-all';
-                    btn.innerText = tag;
-                    btn.onclick = () => btn.classList.toggle('tag-active');
-                    this.elements.tagContainer.appendChild(btn);
-                });
-            },
-
-            addMessage(text, role) {
-                const wrap = document.createElement('div');
-                wrap.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} msg-anim`;
-                wrap.innerHTML = `
-                    <div class="max-w-[85%] ${role === 'user' ? 'bg-amber-500 text-black' : 'bg-white/5 border border-white/5'} p-4 rounded-2xl ${role === 'user' ? 'rounded-tr-none' : 'rounded-tl-none'} text-sm leading-relaxed">
-                        <p>${text}</p>
-                    </div>
-                `;
-                this.elements.chatBox.appendChild(wrap);
-                this.elements.chatBox.scrollTop = this.elements.chatBox.scrollHeight;
-            },
-
-            updateStatus(text, color = "text-amber-200/50") {
-                this.elements.status.innerText = text;
-                this.elements.status.className = `text-xs italic font-light ${color}`;
-            },
-
-            initRain() {
-                const canvas = document.getElementById('rainCanvas');
-                const ctx = canvas.getContext('2d');
-                let w, h, drops = [];
-                const resize = () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; };
-                window.onresize = resize; resize();
-                for(let i=0; i<100; i++) drops.push({x: Math.random()*w, y: Math.random()*h, l: Math.random()*20, s: Math.random()*5+5});
-                const draw = () => {
-                    ctx.clearRect(0,0,w,h); ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
-                    drops.forEach(d => {
-                        ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x, d.y+d.l); ctx.stroke();
-                        d.y += d.s; if(d.y > h) d.y = -d.l;
-                    });
-                    requestAnimationFrame(draw);
-                };
-                draw();
+        async function fetchAIResponse(userPrompt) {
+            if (!CONFIG.isActivated) {
+                return "（避雨檐温馨提示：请先点击右上方“激活”按钮，连接阿里云内核。）";
             }
-        };
-    </script>
 
-    <!-- 4. Main 模块 (逻辑枢纽) -->
-    <script>
-        const App = {
-            history: [],
+            // 构造心理支持 System Prompt
+            const systemPrompt = `你是一个名为“避雨檐”的心理支持大模型。
+            当前环境：雨夜，温馨的庇护所。
+            用户当前的情绪标签是：[${selectedKeywords.join(', ')}]。
+            请根据标签微调语气。要求：语气温柔、专业、带有文学色彩。不要机械化。`;
 
-            init() {
-                UI.init();
-                
-                document.getElementById('initBtn').onclick = () => this.handleActivation();
-                document.getElementById('sendBtn').onclick = () => this.handleSend();
-                UI.elements.input.onkeypress = (e) => { if(e.key === 'Enter') this.handleSend(); };
-            },
-
-            handleActivation() {
-                const key = UI.elements.apiKeyInput.value;
-                if(!key) return alert("请输入 API Key");
-                Config.api.key = key;
-                Config.isActivated = true;
-                UI.updateStatus("阿里云内核：已挂载 Qwen-Plus", "text-emerald-400");
-                UI.addMessage("系统：API 验证已通过，避雨檐随时准备倾听。", "ai");
-            },
-
-            async handleSend() {
-                const val = UI.elements.input.value.trim();
-                if(!val || !Config.isActivated) return;
-
-                UI.addMessage(val, 'user');
-                UI.elements.input.value = '';
-                UI.updateStatus("正在深层思考用户情绪...", "text-amber-400");
-
+            // 指数退避重试 (保证连接稳定性)
+            const fetchWithRetry = async (retries = 3, delay = 1000) => {
                 try {
-                    // 构造上下文
-                    const activeTags = Array.from(document.querySelectorAll('.tag-active')).map(el => el.innerText);
-                    const promptContext = `[用户情绪标签: ${activeTags.join(', ')}] ${val}`;
+                    const response = await fetch(CONFIG.baseUrl, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${CONFIG.apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: CONFIG.model,
+                            messages: [
+                                { role: "system", content: systemPrompt },
+                                { role: "user", content: userPrompt }
+                            ],
+                            temperature: 0.8
+                        })
+                    });
                     
-                    this.history.push({ role: "user", content: promptContext });
-                    
-                    const response = await Api.chat([
-                        { role: "system", content: Config.systemPrompt },
-                        ...this.history
-                    ]);
-
-                    UI.addMessage(response, 'ai');
-                    this.history.push({ role: "assistant", content: response });
-                    UI.updateStatus("模型已就绪", "text-emerald-400");
+                    if (!response.ok) {
+                        const errData = await response.json();
+                        throw new Error(errData.error?.message || 'API 请求失败');
+                    }
+                    return await response.json();
                 } catch (err) {
-                    UI.addMessage(`错误：${err.message}`, 'ai');
-                    UI.updateStatus("连接异常", "text-red-400");
+                    if (retries > 0) {
+                        await new Promise(r => setTimeout(r, delay));
+                        return fetchWithRetry(retries - 1, delay * 2);
+                    }
+                    throw err;
                 }
-            }
-        };
+            };
 
-        // 启动程序
-        window.onload = () => App.init();
+            try {
+                const data = await fetchWithRetry();
+                return data.choices[0].message.content;
+            } catch (error) {
+                console.error(error);
+                return "连接中断：请检查 API Key 是否有效，或检查网络环境。";
+            }
+        }
+
+        // 4. 聊天 UI 处理
+        const chatBox = document.getElementById('chatBox');
+        const userInput = document.getElementById('userInput');
+
+        function addMessage(text, side, isLoading = false) {
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex ${side === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = side === 'user' 
+                ? 'bubble-user max-w-[80%] rounded-2xl rounded-tr-none p-4 text-sm'
+                : 'bubble-ai max-w-[80%] rounded-2xl rounded-tl-none p-4 text-sm leading-relaxed text-white/90';
+            
+            if (isLoading) {
+                bubble.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+            } else {
+                bubble.innerText = text;
+            }
+            
+            wrapper.appendChild(bubble);
+            chatBox.appendChild(wrapper);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return bubble;
+        }
+
+        async function handleSend() {
+            const text = userInput.value.trim();
+            if(!text) return;
+
+            addMessage(text, 'user');
+            userInput.value = '';
+            
+            const loadingBubble = addMessage('', 'ai', true);
+            
+            const response = await fetchAIResponse(text);
+            
+            // 打字机效果
+            loadingBubble.innerHTML = '';
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < response.length) {
+                    loadingBubble.innerText += response.charAt(i);
+                    i++;
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                } else {
+                    clearInterval(timer);
+                }
+            }, 30);
+        }
+
+        userInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') handleSend(); });
+
     </script>
 </body>
 </html>
