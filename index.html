@@ -3,455 +3,582 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>避雨檐 - 精神心理大模型定制</title>
+    <title>避雨檐 Shelter AI - 双模型心理诊疗平台</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         :root {
-            --bg-deep: #0F172A;
-            --bg-gradient: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+            --bg-deep: #080c14;
             --amber-glow: #F59E0B;
-            --amber-soft: #FCD34D;
-            --text-warm: #FFFBEB;
-            --glass-bg: rgba(255, 255, 255, 0.05);
-            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass: rgba(20, 30, 45, 0.6);
+            --border-light: rgba(255, 255, 255, 0.08);
         }
+        body { background: var(--bg-deep); color: #FFFBEB; font-family: 'Inter', sans-serif; overflow: hidden; }
+        #canvasBg { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+        
+        .glass-panel { 
+            background: var(--glass); 
+            backdrop-filter: blur(20px); 
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-light); 
+            border-radius: 16px; 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        .chat-scroll::-webkit-scrollbar { width: 4px; }
+        .chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        
+        .tag-btn { background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); transition: all 0.2s; }
+        .tag-btn:hover { border-color: var(--amber-glow); background: rgba(245, 158, 11, 0.1); transform: translateY(-1px); }
+        .tag-active { background: var(--amber-glow) !important; color: #000 !important; font-weight: bold; box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+        
+        @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        .msg-anim { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        
+        /* Loading Dot Animation */
+        .typing-dot { width: 6px; height: 6px; background-color: rgba(255,255,255,0.6); border-radius: 50%; display: inline-block; animation: typing 1.4s infinite ease-in-out both; margin: 0 2px; }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
 
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            overflow: hidden;
-            background: var(--bg-deep);
-            color: var(--text-warm);
-            font-family: 'Inter', "Microsoft YaHei", sans-serif;
-        }
-
-        /* 背景雨滴画布 */
-        #rainCanvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 0;
-            pointer-events: none;
-        }
-
-        /* 氛围光点 */
-        .glow-spot {
-            position: absolute;
-            width: 400px;
-            height: 400px;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(245, 158, 11, 0.05) 0%, transparent 70%);
-            filter: blur(50px);
-            z-index: 1;
-        }
-
-        /* 磨砂玻璃面板 */
-        .glass-panel {
-            background: var(--glass-bg);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--glass-border);
-            border-radius: 24px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        }
-
-        /* 呼吸灯效果 */
-        @keyframes breathe {
-            0%, 100% { opacity: 0.6; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.2); }
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-            background: var(--amber-glow);
-            box-shadow: 0 0 10px var(--amber-glow);
-            animation: breathe 2s infinite ease-in-out;
-        }
-
-        .keyword-tag {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .keyword-tag:hover {
-            background: rgba(245, 158, 11, 0.2);
-            border-color: var(--amber-soft);
-            transform: translateY(-2px);
-            box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
-        }
-
-        .keyword-tag.active {
-            background: var(--amber-glow);
-            color: var(--bg-deep);
-            border-color: var(--amber-glow);
-        }
-
-        /* 聊天容器 */
-        .chat-container::-webkit-scrollbar {
-            width: 4px;
-        }
-        .chat-container::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,0.1);
-            border-radius: 10px;
-        }
-
-        .bubble-ai {
-            background: rgba(255, 255, 255, 0.04);
-            border-left: 3px solid var(--amber-glow);
-            animation: slideUp 0.3s ease-out forwards;
-        }
-
-        .bubble-user {
-            background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
-            color: white;
-            animation: slideUp 0.3s ease-out forwards;
-        }
-
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .flow-particle {
-            position: absolute;
-            background: var(--amber-soft);
-            border-radius: 50%;
-            pointer-events: none;
-            z-index: 50;
-        }
-
-        /* 输入框聚焦 */
-        input:focus {
-            outline: none;
-            border-color: var(--amber-glow) !important;
-            box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
-        }
-
-        /* 等待动画 */
-        .typing-dot {
-            width: 4px;
-            height: 4px;
-            background: var(--amber-glow);
-            border-radius: 50%;
-            display: inline-block;
-            animation: typing 1.4s infinite;
-            margin: 0 1px;
-        }
-        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
-        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-
-        @keyframes typing {
-            0%, 100% { transform: translateY(0); opacity: 0.4; }
-            50% { transform: translateY(-4px); opacity: 1; }
-        }
-
-        @media (max-width: 1024px) {
-            .side-content { display: none; }
-            .main-content { width: 100% !important; }
-        }
+        /* Modal */
+        .modal { display: none; }
+        .modal.active { display: flex; animation: fadeIn 0.2s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Progress Bar */
+        .progress-bar { transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
     </style>
 </head>
-<body class="flex flex-col h-screen">
+<body class="h-screen flex flex-col p-4 md:p-6 relative">
+    <!-- 城市天际线与暴雨画布 -->
+    <canvas id="canvasBg"></canvas>
 
-    <canvas id="rainCanvas"></canvas>
-    
-    <div class="glow-spot top-[-100px] left-[-100px]"></div>
-    <div class="glow-spot bottom-[-100px] right-[-100px]"></div>
-
-    <header class="relative z-10 flex justify-between items-center px-8 py-6">
-        <div class="flex flex-col">
-            <h1 class="text-2xl font-light tracking-widest text-white flex items-center">
-                <span class="mr-3">避雨檐</span>
-                <span class="text-xs px-2 py-1 border border-amber-500/30 rounded text-amber-500/80 tracking-tighter uppercase">Shelter AI</span>
-            </h1>
-            <p class="text-[10px] text-white/40 mt-1 uppercase tracking-widest">阿里云大模型驱动版</p>
+    <!-- 顶部导航 -->
+    <header class="relative z-10 flex justify-between items-center mb-6 px-2">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight">避雨檐 <span class="text-amber-500 font-light">ShelterAI</span></h1>
+            <p class="text-[10px] opacity-50 tracking-widest mt-1">DUAL-MODEL PSYCHOLOGICAL FRAMEWORK V3</p>
         </div>
-
-        <div class="flex items-center space-x-4">
-            <div id="modelStatus" class="hidden md:flex items-center mr-6 px-3 py-1.5 glass-panel rounded-full text-xs text-white/70">
-                <span id="statusDot" class="status-dot"></span>
-                <span id="statusText">系统待唤醒</span>
+        <div class="flex items-center gap-4">
+            <div id="statusTag" class="hidden md:flex items-center px-4 py-1.5 glass-panel rounded-full text-[11px] opacity-80 transition-all">
+                <span id="statusDot" class="w-1.5 h-1.5 rounded-full bg-gray-500 mr-2"></span>
+                <span id="statusLabel">等待选择方向...</span>
             </div>
-            
-            <div class="relative group flex items-center">
-                <!-- 预填了你提供的阿里云 API Key -->
-                <input type="password" id="apiKey" value="sk-76456a9801c14ee9901727f080c635f9" placeholder="API Key..." 
-                    class="bg-white/5 border border-white/10 rounded-full px-5 py-2 text-sm w-48 focus:w-64 transition-all duration-500 backdrop-blur-md">
-                <button onclick="activateAPI()" id="activateBtn" class="ml-2 px-6 py-2 rounded-full bg-amber-500 text-slate-900 text-sm font-bold hover:bg-amber-400 transition-colors shadow-lg shadow-amber-500/20">
-                    激活
-                </button>
-            </div>
+            <button onclick="UI.toggleModal('settingsModal')" class="glass-panel p-2.5 hover:bg-white/10 transition-colors text-white/70 hover:text-white group">
+                <i class="fas fa-cog group-hover:rotate-90 transition-transform duration-300"></i>
+            </button>
         </div>
     </header>
 
-    <main class="relative z-10 flex-grow flex flex-col md:flex-row px-8 pb-8 gap-6 overflow-hidden">
-        
-        <aside class="side-content w-full md:w-1/4 flex flex-col gap-6">
-            <div class="glass-panel p-6 flex-grow flex flex-col">
-                <h3 class="text-amber-500 text-sm font-medium mb-4 flex items-center">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                    性格与情绪注入
-                </h3>
-                <p class="text-xs text-white/50 mb-6 leading-relaxed">
-                    选择你的情绪关键词，流体注能将改变模型的交互深度与共情权重。
-                </p>
-                
-                <div class="flex flex-wrap gap-2" id="keywordContainer"></div>
+    <main class="relative z-10 flex-grow flex flex-col md:flex-row gap-6 overflow-hidden max-w-7xl mx-auto w-full">
+        <!-- 左侧面板 -->
+        <aside class="w-full md:w-80 flex flex-col gap-4 shrink-0">
+            <!-- 阶段一：关键词选择 -->
+            <div id="panelKeywords" class="glass-panel p-6 flex flex-col transition-all duration-500">
+                <h2 class="text-amber-500 text-[11px] font-bold tracking-widest mb-1 flex items-center">
+                    <i class="fas fa-compass mr-2"></i> STEP 1: 确定方向
+                </h2>
+                <p class="text-xs text-white/40 mb-5">选择一个最贴近你当下感受的词汇，我们将进行简单的评估。</p>
+                <div id="tagContainer" class="flex flex-col gap-3 mb-6">
+                    <!-- JS动态注入 -->
+                </div>
+                <button id="btnStartAssess" disabled class="w-full bg-white/5 border border-white/10 text-white/30 py-3 rounded-xl text-xs font-bold transition-all cursor-not-allowed mt-auto">
+                    请先选择一个词汇
+                </button>
+            </div>
 
-                <div class="mt-auto pt-6 border-t border-white/5">
-                    <div class="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10">
-                        <p class="text-[10px] text-amber-200/60 uppercase tracking-tighter">当前适配度</p>
-                        <div class="w-full bg-white/5 h-1 rounded-full mt-2 overflow-hidden">
-                            <div id="adaptationBar" class="h-full bg-amber-500 w-0 transition-all duration-1000"></div>
+            <!-- 阶段三：可视化诊断报告 (初始隐藏) -->
+            <div id="panelReport" class="glass-panel p-6 flex-col hidden opacity-0 transition-opacity duration-500 h-full">
+                <h2 class="text-emerald-400 text-[11px] font-bold tracking-widest mb-1 flex items-center">
+                    <i class="fas fa-chart-radar mr-2"></i> 状态评估画像
+                </h2>
+                <p class="text-xs text-white/40 mb-6">基于初步沟通生成的诊断摘要</p>
+                
+                <div class="space-y-5 flex-grow">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1"><span class="text-white/70">心理压力指数</span><span id="scoreStress" class="font-bold text-amber-400">0/100</span></div>
+                        <div class="w-full bg-black/40 h-1.5 rounded-full overflow-hidden">
+                            <div id="barStress" class="bg-gradient-to-r from-amber-500 to-red-500 h-full progress-bar" style="width: 0%"></div>
                         </div>
                     </div>
+                    <div>
+                        <div class="flex justify-between text-xs mb-1"><span class="text-white/70">情绪内耗程度</span><span id="scoreFriction" class="font-bold text-indigo-400">0/100</span></div>
+                        <div class="w-full bg-black/40 h-1.5 rounded-full overflow-hidden">
+                            <div id="barFriction" class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full progress-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="pt-4 border-t border-white/5">
+                        <div class="text-[10px] text-white/40 mb-1 uppercase">核心痛点识别</div>
+                        <div id="txtCore" class="text-sm font-medium leading-relaxed text-emerald-100">分析中...</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-white/40 mb-1 uppercase">当前认知状态</div>
+                        <div id="txtCognitive" class="text-xs leading-relaxed text-white/70">分析中...</div>
+                    </div>
+                </div>
+                
+                <div class="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-200/80 flex items-start">
+                    <i class="fas fa-info-circle mt-0.5 mr-2"></i>
+                    <span>已无缝切换至深度疗愈模型。后续对话将基于此报告展开。</span>
                 </div>
             </div>
         </aside>
 
-        <section class="main-content w-full md:w-3/4 flex flex-col glass-panel overflow-hidden relative">
-            <div class="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-white/5 to-transparent pointer-events-none z-10"></div>
-            
-            <div id="chatBox" class="chat-container flex-grow overflow-y-auto p-8 flex flex-col space-y-6">
-                <div class="flex justify-start">
-                    <div class="bubble-ai max-w-[80%] rounded-2xl rounded-tl-none p-5 text-sm leading-relaxed text-white/90">
-                        今日心屿温度：窗外有雨，但这里有灯。我是你的心灵庇护所，今天想聊点什么？
-                    </div>
+        <!-- 右侧：对话区域 -->
+        <section class="flex-grow glass-panel flex flex-col overflow-hidden relative">
+            <!-- 遮罩层，未开始前阻止输入 -->
+            <div id="chatOverlay" class="absolute inset-0 z-20 bg-black/40 backdrop-blur-sm flex items-center justify-center transition-opacity duration-500">
+                <div class="text-center">
+                    <i class="fas fa-coffee text-4xl text-white/20 mb-4"></i>
+                    <p class="text-white/60 text-sm">请先在左侧选择你关心的方向</p>
                 </div>
             </div>
 
-            <div class="p-6 bg-white/[0.02] border-t border-white/5">
-                <div class="flex items-center space-x-3 bg-white/5 rounded-2xl p-2 pl-4 border border-white/10">
-                    <input type="text" id="userInput" placeholder="在这里倾诉..." 
-                        class="bg-transparent flex-grow text-sm border-none focus:ring-0 py-3">
-                    <button onclick="handleSend()" id="sendBtn" class="p-3 bg-amber-500 rounded-xl text-slate-900 hover:scale-105 transition-transform disabled:opacity-50">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-                    </button>
+            <div id="chatBox" class="chat-scroll flex-grow overflow-y-auto p-6 space-y-6 pb-20">
+                <!-- 消息容器 -->
+            </div>
+
+            <div class="p-4 bg-black/30 border-t border-white/5 flex gap-3 items-center z-10">
+                <div class="flex-grow flex items-center bg-white/5 border border-white/10 rounded-2xl px-4 py-1.5 focus-within:border-amber-500/50 transition-colors">
+                    <input type="text" id="userInput" placeholder="此时此刻的感受..." disabled class="bg-transparent flex-grow outline-none text-sm py-2.5 text-white/90 disabled:opacity-50">
                 </div>
-                <div class="mt-3 flex justify-between text-[10px] text-white/30 px-2 uppercase tracking-widest">
-                    <span>加密线路连接中</span>
-                    <span id="tokenUsage">已适配阿里云 Qwen 内核</span>
-                </div>
+                <button id="sendBtn" disabled class="w-12 h-12 bg-amber-500 text-slate-900 rounded-2xl flex items-center justify-center transition-all hover:bg-amber-400 disabled:opacity-30 disabled:cursor-not-allowed">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
             </div>
         </section>
     </main>
 
+    <!-- 设置弹窗 (API Config) -->
+    <div id="settingsModal" class="modal fixed inset-0 z-50 items-center justify-center bg-black/60 backdrop-blur-md">
+        <div class="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl transform scale-100 transition-transform">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-lg font-bold">API 设置与模型挂载</h3>
+                <button onclick="UI.toggleModal('settingsModal')" class="text-white/40 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-white/50 block mb-1">Base URL</label>
+                    <input type="text" id="cfgBase" value="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
+                </div>
+                <div>
+                    <label class="text-xs text-white/50 block mb-1">API Key</label>
+                    <input type="password" id="cfgKey" placeholder="sk-..." class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
+                    <div>
+                        <label class="text-xs text-amber-500/80 font-bold block mb-1"><i class="fas fa-stethoscope mr-1"></i> 状态评估模型</label>
+                        <input type="text" id="cfgAssess" value="qwen-turbo-latest" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-amber-100/80">
+                        <p class="text-[9px] text-white/30 mt-1">负责前置多轮问询与图表生成</p>
+                    </div>
+                    <div>
+                        <label class="text-xs text-emerald-500/80 font-bold block mb-1"><i class="fas fa-leaf mr-1"></i> 深度疗愈模型</label>
+                        <input type="text" id="cfgTherapy" value="qwen-max" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-emerald-500 text-emerald-100/80">
+                        <p class="text-[9px] text-white/30 mt-1">负责评估后的沉浸式对话支持</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-8 flex justify-end">
+                <button onclick="App.saveSettings()" class="bg-white/10 hover:bg-white/20 text-white px-5 py-2 rounded-xl text-xs font-bold transition-colors">保存并关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 逻辑代码 -->
     <script>
-        // --- 全局配置 ---
-        const CONFIG = {
-            apiKey: "",
-            // 阿里云官方 OpenAI 兼容接口地址
-            baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-            model: "qwen-plus", // 阿里云通义千问模型名称
-            isActivated: false,
-            history: [] 
+        /**
+         * 模块一：全局配置与状态机
+         */
+        const Config = {
+            api: {
+                base: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                key: "",
+                assessModel: "qwen-turbo-latest",
+                therapyModel: "qwen-max"
+            },
+            tags: [
+                { id: 'family', label: '原生家庭', desc: '童年印记、边界感模糊、父母控制' },
+                { id: 'existential', label: '存在主义', desc: '意义匮乏、虚无感、孤独与死亡焦虑' },
+                { id: 'career', label: '职场内耗', desc: '自我压榨、价值感剥夺、人际疲惫' },
+                { id: 'intimacy', label: '亲密关系', desc: '依恋回避/焦虑、沟通障碍、背叛创伤' }
+            ],
+            // 核心提示词：强制平实、无动作描写
+            prompts: {
+                rule: "【绝对禁止】：不要在回复中使用括号描写动作（如不要说‘递上一杯茶’、‘微笑着’）。【语气要求】：你是一个真正的朋友和专业的心理咨询师。请用大白话、口语化的方式交流，自然、平实、有温度，千万不要像教科书或机器那样说教。",
+                
+                assessSystem: (tag) => `你是一个心理评估AI。用户当前关心的话题是【${tag}】。\n你的任务是通过两三轮对话，温和地了解用户的具体痛点。每次只问一个简短、自然的问题。\n${Config.prompts.rule}`,
+                
+                assessJsonPrompt: "请停止对话。根据之前的交流，对用户进行评估。严格只输出一个合法的 JSON 字符串，不要任何 Markdown 标记。格式如下：\n{\"stress\": 0到100的整数,\"friction\": 0到100的整数,\"coreIssue\": \"一句话概括核心痛点\",\"cognitive\": \"客观描述用户目前的认知盲区或状态\"}",
+                
+                therapySystem: (json) => `你是一个负责深度疗愈的心理专家。\n以下是对该用户的初步状态评估：\n核心痛点：${json.coreIssue}\n压力指数：${json.stress}\n认知状态：${json.cognitive}\n请结合以上评估结果，顺着用户的话题继续深入交流，提供支持和引导。\n${Config.prompts.rule}`
+            }
         };
 
-        // 1. 雨滴背景动画
-        const canvas = document.getElementById('rainCanvas');
-        const ctx = canvas.getContext('2d');
-        let width, height, drops = [];
+        const State = {
+            phase: 0, // 0: 待机, 1: 评估中(聊2轮), 2: 疗愈中
+            assessTurns: 0,
+            maxAssessTurns: 2,
+            selectedTag: null,
+            history: [] // 统一存储对话上下文
+        };
 
-        function initRain() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-            drops = [];
-            for(let i = 0; i < 150; i++) {
-                drops.push({
-                    x: Math.random() * width,
-                    y: Math.random() * height,
-                    len: Math.random() * 20 + 10,
-                    speed: Math.random() * 5 + 5
+        /**
+         * 模块二：网络请求中心
+         */
+        const Api = {
+            async chat(model, messages) {
+                if (!Config.api.key) {
+                    UI.toggleModal('settingsModal');
+                    throw new Error("请先在设置中配置 API Key。");
+                }
+                const res = await fetch(Config.api.base, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Config.api.key}` },
+                    body: JSON.stringify({ model: model, messages: messages, temperature: 0.7 })
                 });
-            }
-        }
-
-        function drawRain() {
-            ctx.clearRect(0, 0, width, height);
-            ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
-            ctx.lineWidth = 1;
-            drops.forEach(drop => {
-                ctx.beginPath(); ctx.moveTo(drop.x, drop.y); ctx.lineTo(drop.x, drop.y + drop.len); ctx.stroke();
-                drop.y += drop.speed;
-                if(drop.y > height) { drop.y = -drop.len; drop.x = Math.random() * width; }
-            });
-            requestAnimationFrame(drawRain);
-        }
-        initRain(); drawRain();
-
-        // 2. 情绪标签逻辑
-        const keywords = ['焦虑', '原生家庭', '职场压力', '孤独感', '自我否定', '创伤后成长', '人际关系', '抑郁情绪', '存在主义'];
-        const container = document.getElementById('keywordContainer');
-        let selectedKeywords = [];
-
-        keywords.forEach(word => {
-            const tag = document.createElement('div');
-            tag.className = 'keyword-tag px-3 py-1.5 rounded-full text-xs text-white/60 bg-white/5';
-            tag.innerText = word;
-            tag.onclick = (e) => {
-                tag.classList.toggle('active');
-                if(tag.classList.contains('active')) {
-                    selectedKeywords.push(word);
-                    createFlowEffect(e.clientX, e.clientY);
-                } else {
-                    selectedKeywords = selectedKeywords.filter(k => k !== word);
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error?.message || "网络请求异常");
                 }
-                updateAdaptation();
-            };
-            container.appendChild(tag);
-        });
-
-        function updateAdaptation() {
-            const bar = document.getElementById('adaptationBar');
-            bar.style.width = Math.min(selectedKeywords.length * 20, 100) + '%';
-        }
-
-        function createFlowEffect(startX, startY) {
-            const target = document.querySelector('.main-content').getBoundingClientRect();
-            for(let i = 0; i < 5; i++) {
-                const p = document.createElement('div');
-                p.className = 'flow-particle';
-                p.style.width = '3px'; p.style.height = '3px';
-                p.style.left = startX + 'px'; p.style.top = startY + 'px';
-                document.body.appendChild(p);
-                p.animate([{opacity: 1}, {left: (target.left + target.width/2)+'px', top: (target.top + target.height/2)+'px', opacity: 0}], 
-                {duration: 800, easing: 'ease-in-out'}).onfinish = () => p.remove();
-            }
-        }
-
-        // 3. API 核心逻辑 (针对阿里云)
-        async function activateAPI() {
-            const keyInput = document.getElementById('apiKey');
-            const btn = document.getElementById('activateBtn');
-            if(!keyInput.value) return;
-
-            CONFIG.apiKey = keyInput.value;
-            btn.innerText = "校验中...";
-            
-            // 延迟一秒模拟初始化
-            setTimeout(() => {
-                CONFIG.isActivated = true;
-                btn.innerText = "已就绪";
-                btn.className = "ml-2 px-6 py-2 rounded-full bg-emerald-500 text-white text-sm font-bold shadow-lg shadow-emerald-500/20";
-                document.getElementById('modelStatus').classList.remove('hidden');
-                document.getElementById('statusText').innerText = "阿里云内核已挂载";
-                addMessage("系统：通义千问 API 接入成功。避雨檐已准备好接收你的心声。", 'ai');
-            }, 800);
-        }
-
-        async function fetchAIResponse(userPrompt) {
-            if (!CONFIG.isActivated) {
-                return "（避雨檐温馨提示：请先点击右上方“激活”按钮，连接阿里云内核。）";
-            }
-
-            // 构造心理支持 System Prompt
-            const systemPrompt = `你是一个名为“避雨檐”的心理支持大模型。
-            当前环境：雨夜，温馨的庇护所。
-            用户当前的情绪标签是：[${selectedKeywords.join(', ')}]。
-            请根据标签微调语气。要求：语气温柔、专业、带有文学色彩。不要机械化。`;
-
-            // 指数退避重试 (保证连接稳定性)
-            const fetchWithRetry = async (retries = 3, delay = 1000) => {
-                try {
-                    const response = await fetch(CONFIG.baseUrl, {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${CONFIG.apiKey}`
-                        },
-                        body: JSON.stringify({
-                            model: CONFIG.model,
-                            messages: [
-                                { role: "system", content: systemPrompt },
-                                { role: "user", content: userPrompt }
-                            ],
-                            temperature: 0.8
-                        })
-                    });
-                    
-                    if (!response.ok) {
-                        const errData = await response.json();
-                        throw new Error(errData.error?.message || 'API 请求失败');
-                    }
-                    return await response.json();
-                } catch (err) {
-                    if (retries > 0) {
-                        await new Promise(r => setTimeout(r, delay));
-                        return fetchWithRetry(retries - 1, delay * 2);
-                    }
-                    throw err;
-                }
-            };
-
-            try {
-                const data = await fetchWithRetry();
+                const data = await res.json();
                 return data.choices[0].message.content;
-            } catch (error) {
-                console.error(error);
-                return "连接中断：请检查 API Key 是否有效，或检查网络环境。";
             }
-        }
+        };
 
-        // 4. 聊天 UI 处理
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
+        /**
+         * 模块三：界面与特效
+         */
+        const UI = {
+            els: {
+                tagContainer: document.getElementById('tagContainer'),
+                chatBox: document.getElementById('chatBox'),
+                input: document.getElementById('userInput'),
+                sendBtn: document.getElementById('sendBtn'),
+                statusLabel: document.getElementById('statusLabel'),
+                statusDot: document.getElementById('statusDot'),
+                chatOverlay: document.getElementById('chatOverlay'),
+                btnStartAssess: document.getElementById('btnStartAssess')
+            },
 
-        function addMessage(text, side, isLoading = false) {
-            const wrapper = document.createElement('div');
-            wrapper.className = `flex ${side === 'user' ? 'justify-end' : 'justify-start'}`;
-            
-            const bubble = document.createElement('div');
-            bubble.className = side === 'user' 
-                ? 'bubble-user max-w-[80%] rounded-2xl rounded-tr-none p-4 text-sm'
-                : 'bubble-ai max-w-[80%] rounded-2xl rounded-tl-none p-4 text-sm leading-relaxed text-white/90';
-            
-            if (isLoading) {
-                bubble.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
-            } else {
-                bubble.innerText = text;
-            }
-            
-            wrapper.appendChild(bubble);
-            chatBox.appendChild(wrapper);
-            chatBox.scrollTop = chatBox.scrollHeight;
-            return bubble;
-        }
+            init() {
+                this.renderTags();
+                this.initCanvasBg();
+            },
 
-        async function handleSend() {
-            const text = userInput.value.trim();
-            if(!text) return;
+            toggleModal(id) {
+                const m = document.getElementById(id);
+                m.classList.toggle('active');
+            },
 
-            addMessage(text, 'user');
-            userInput.value = '';
-            
-            const loadingBubble = addMessage('', 'ai', true);
-            
-            const response = await fetchAIResponse(text);
-            
-            // 打字机效果
-            loadingBubble.innerHTML = '';
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < response.length) {
-                    loadingBubble.innerText += response.charAt(i);
-                    i++;
-                    chatBox.scrollTop = chatBox.scrollHeight;
+            renderTags() {
+                this.els.tagContainer.innerHTML = '';
+                Config.tags.forEach(tag => {
+                    const div = document.createElement('div');
+                    div.className = 'tag-btn p-3 rounded-xl cursor-pointer text-left';
+                    div.innerHTML = `
+                        <div class="text-sm font-bold text-white/90">${tag.label}</div>
+                        <div class="text-[10px] text-white/40 mt-1">${tag.desc}</div>
+                    `;
+                    div.onclick = () => {
+                        if(State.phase > 0) return; // 开始后禁止切换
+                        document.querySelectorAll('.tag-btn').forEach(el => el.classList.remove('tag-active'));
+                        div.classList.add('tag-active');
+                        State.selectedTag = tag.label;
+                        
+                        this.els.btnStartAssess.disabled = false;
+                        this.els.btnStartAssess.className = "w-full bg-amber-500 text-slate-900 py-3 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] shadow-lg shadow-amber-500/20 mt-auto";
+                        this.els.btnStartAssess.innerText = "开启评估引擎";
+                    };
+                    this.els.tagContainer.appendChild(div);
+                });
+            },
+
+            addMessage(text, role, isSystem = false) {
+                const wrap = document.createElement('div');
+                wrap.className = `flex ${isSystem ? 'justify-center' : (role === 'user' ? 'justify-end' : 'justify-start')} msg-anim`;
+                
+                if (isSystem) {
+                    wrap.innerHTML = `<div class="text-[10px] text-white/30 tracking-widest uppercase my-4">--- ${text} ---</div>`;
                 } else {
-                    clearInterval(timer);
+                    const contentCls = role === 'user' 
+                        ? 'bg-white/10 border border-white/20 text-white rounded-tr-none' 
+                        : 'bg-black/40 border border-amber-500/20 text-white/90 rounded-tl-none';
+                    
+                    wrap.innerHTML = `<div class="max-w-[85%] p-4 rounded-2xl text-[13px] leading-relaxed shadow-xl ${contentCls}">${text}</div>`;
                 }
-            }, 30);
-        }
+                
+                this.els.chatBox.appendChild(wrap);
+                this.els.chatBox.scrollTop = this.els.chatBox.scrollHeight;
+                return wrap; // 方便后续修改（如打字机）
+            },
 
-        userInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') handleSend(); });
+            addTyping() {
+                const wrap = document.createElement('div');
+                wrap.className = `flex justify-start msg-anim id-typing`;
+                wrap.innerHTML = `
+                    <div class="p-4 rounded-2xl rounded-tl-none bg-black/40 border border-white/5">
+                        <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+                    </div>`;
+                this.els.chatBox.appendChild(wrap);
+                this.els.chatBox.scrollTop = this.els.chatBox.scrollHeight;
+                return wrap;
+            },
 
+            removeTyping() {
+                const t = document.querySelector('.id-typing');
+                if(t) t.remove();
+            },
+
+            updateStatus(text, type = 'idle') {
+                this.els.statusLabel.innerText = text;
+                const colors = {
+                    'idle': 'bg-gray-500 shadow-none',
+                    'assess': 'bg-amber-500 shadow-[0_0_8px_#F59E0B] animate-pulse',
+                    'therapy': 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
+                };
+                this.els.statusDot.className = `w-1.5 h-1.5 rounded-full mr-2 ${colors[type]}`;
+            },
+
+            unlockChat() {
+                this.els.chatOverlay.style.opacity = '0';
+                setTimeout(() => this.els.chatOverlay.classList.add('hidden'), 500);
+                this.els.input.disabled = false;
+                this.els.sendBtn.disabled = false;
+                this.els.input.focus();
+            },
+
+            showReport(json) {
+                // 隐藏选择词，展示报告
+                document.getElementById('panelKeywords').classList.add('hidden');
+                const p = document.getElementById('panelReport');
+                p.classList.remove('hidden');
+                
+                // 动画显示数据
+                setTimeout(() => {
+                    p.classList.remove('opacity-0');
+                    document.getElementById('scoreStress').innerText = `${json.stress}/100`;
+                    document.getElementById('barStress').style.width = `${json.stress}%`;
+                    
+                    document.getElementById('scoreFriction').innerText = `${json.friction}/100`;
+                    document.getElementById('barFriction').style.width = `${json.friction}%`;
+                    
+                    document.getElementById('txtCore').innerText = json.coreIssue;
+                    document.getElementById('txtCognitive').innerText = json.cognitive;
+                }, 100);
+            },
+
+            // 绘制雨滴+城市背景
+            initCanvasBg() {
+                const canvas = document.getElementById('canvasBg');
+                const ctx = canvas.getContext('2d');
+                let w, h;
+                let drops = [];
+                let skyline = [];
+
+                const resize = () => {
+                    w = canvas.width = window.innerWidth;
+                    h = canvas.height = window.innerHeight;
+                    // 生成简易天际线
+                    skyline = [];
+                    let x = 0;
+                    while(x < w) {
+                        let bWidth = 30 + Math.random() * 80;
+                        let bHeight = h * 0.1 + Math.random() * h * 0.25;
+                        skyline.push({x: x, w: bWidth, h: bHeight});
+                        x += bWidth;
+                    }
+                };
+                window.addEventListener('resize', resize);
+                resize();
+
+                // 初始化雨滴 (更密集，更快速)
+                for(let i=0; i<150; i++) {
+                    drops.push({
+                        x: Math.random() * w,
+                        y: Math.random() * h,
+                        l: Math.random() * 25 + 10,
+                        s: Math.random() * 15 + 10,
+                        a: Math.random() * 0.4 + 0.1
+                    });
+                }
+
+                const animate = () => {
+                    // 暗色拖影
+                    ctx.fillStyle = 'rgba(8, 12, 20, 0.4)';
+                    ctx.fillRect(0, 0, w, h);
+
+                    // 画城市天际线
+                    ctx.fillStyle = '#0f172a'; // Slate-900 颜色
+                    skyline.forEach(b => {
+                        ctx.fillRect(b.x, h - b.h, b.w, b.h);
+                        // 随机几个窗户
+                        if(Math.random() > 0.98) {
+                            ctx.fillStyle = 'rgba(245, 158, 11, 0.3)'; // 微弱的灯光
+                            ctx.fillRect(b.x + b.w/2, h - b.h + 20, 4, 4);
+                            ctx.fillStyle = '#0f172a';
+                        }
+                    });
+
+                    // 画雨滴
+                    drops.forEach(d => {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${d.a})`;
+                        ctx.lineWidth = 1.5;
+                        ctx.moveTo(d.x, d.y);
+                        ctx.lineTo(d.x - d.s/3, d.y + d.l); // 稍微带点风的倾斜
+                        ctx.stroke();
+                        
+                        d.y += d.s;
+                        d.x -= d.s/3;
+                        if(d.y > h) {
+                            d.y = -d.l;
+                            d.x = Math.random() * w + w*0.2; // 补偿倾斜带来的偏移
+                        }
+                    });
+                    requestAnimationFrame(animate);
+                };
+                animate();
+            }
+        };
+
+        /**
+         * 模块四：核心业务流程控制器
+         */
+        const App = {
+            init() {
+                UI.init();
+                this.bindEvents();
+                // 尝试读取本地配置
+                const savedKey = localStorage.getItem('shelter_apikey');
+                if(savedKey) {
+                    Config.api.key = savedKey;
+                    document.getElementById('cfgKey').value = savedKey;
+                }
+            },
+
+            bindEvents() {
+                UI.els.btnStartAssess.onclick = () => this.startAssessment();
+                UI.els.sendBtn.onclick = () => this.handleChat();
+                UI.els.input.onkeypress = (e) => { if(e.key === 'Enter') this.handleChat(); };
+            },
+
+            saveSettings() {
+                Config.api.base = document.getElementById('cfgBase').value.trim();
+                Config.api.key = document.getElementById('cfgKey').value.trim();
+                Config.api.assessModel = document.getElementById('cfgAssess').value.trim();
+                Config.api.therapyModel = document.getElementById('cfgTherapy').value.trim();
+                
+                if(Config.api.key) localStorage.setItem('shelter_apikey', Config.api.key);
+                UI.toggleModal('settingsModal');
+            },
+
+            async startAssessment() {
+                if(!Config.api.key) {
+                    alert("请先配置 API Key");
+                    UI.toggleModal('settingsModal');
+                    return;
+                }
+
+                State.phase = 1;
+                UI.unlockChat();
+                UI.updateStatus(`[${Config.api.assessModel}] 评估中...`, 'assess');
+                UI.els.btnStartAssess.innerText = "评估运行中";
+                UI.els.btnStartAssess.disabled = true;
+
+                // 写入 System Prompt
+                State.history.push({ role: "system", content: Config.prompts.assessSystem(State.selectedTag) });
+                
+                // 让 AI 率先发话
+                UI.addTyping();
+                try {
+                    const reply = await Api.chat(Config.api.assessModel, State.history);
+                    UI.removeTyping();
+                    UI.addMessage(reply, 'ai');
+                    State.history.push({ role: "assistant", content: reply });
+                } catch(e) {
+                    UI.removeTyping();
+                    UI.addMessage("模型唤醒失败: " + e.message, 'ai');
+                }
+            },
+
+            async handleChat() {
+                const text = UI.els.input.value.trim();
+                if(!text) return;
+
+                UI.els.input.value = '';
+                UI.addMessage(text, 'user');
+                State.history.push({ role: "user", content: text });
+
+                UI.addTyping();
+
+                if (State.phase === 1) {
+                    State.assessTurns++;
+                    try {
+                        // 如果达到评估轮次，强制进行 JSON 评估
+                        if (State.assessTurns >= State.maxAssessTurns) {
+                            UI.updateStatus("正在生成诊断画像...", 'assess');
+                            
+                            // 构造隐式强制评估请求（不保存到主要 history，防止污染对话）
+                            const evalPrompt = [...State.history, { role: "user", content: Config.prompts.assessJsonPrompt }];
+                            const rawJsonStr = await Api.chat(Config.api.assessModel, evalPrompt);
+                            
+                            // 提取 JSON
+                            const jsonMatch = rawJsonStr.match(/\{[\s\S]*\}/);
+                            if(!jsonMatch) throw new Error("大模型未按规范输出 JSON");
+                            const report = JSON.parse(jsonMatch[0]);
+                            
+                            // 渲染界面
+                            UI.showReport(report);
+                            UI.addMessage("评估完成，模型切换", "system", true);
+                            
+                            // 状态机切换到 Phase 2
+                            State.phase = 2;
+                            UI.updateStatus(`[${Config.api.therapyModel}] 疗愈中`, 'therapy');
+
+                            // 清理原有的 Assessment System Prompt，重塑为 Therapy Context
+                            State.history = State.history.filter(m => m.role !== 'system');
+                            State.history.unshift({ role: "system", content: Config.prompts.therapySystem(report) });
+
+                            // 让疗愈模型基于新身份回答用户的最后一句话
+                            const therapyReply = await Api.chat(Config.api.therapyModel, State.history);
+                            UI.removeTyping();
+                            UI.addMessage(therapyReply, 'ai');
+                            State.history.push({ role: "assistant", content: therapyReply });
+
+                        } else {
+                            // 正常的评估多轮对话
+                            const reply = await Api.chat(Config.api.assessModel, State.history);
+                            UI.removeTyping();
+                            UI.addMessage(reply, 'ai');
+                            State.history.push({ role: "assistant", content: reply });
+                        }
+                    } catch (e) {
+                        UI.removeTyping();
+                        UI.addMessage("评估过程受到干扰: " + e.message, 'ai');
+                    }
+                } 
+                else if (State.phase === 2) {
+                    // 阶段二：纯粹的疗愈对话
+                    try {
+                        const reply = await Api.chat(Config.api.therapyModel, State.history);
+                        UI.removeTyping();
+                        UI.addMessage(reply, 'ai');
+                        State.history.push({ role: "assistant", content: reply });
+                    } catch(e) {
+                        UI.removeTyping();
+                        UI.addMessage("思绪断开: " + e.message, 'ai');
+                    }
+                }
+            }
+        };
+
+        // 启动系统
+        window.onload = () => App.init();
     </script>
 </body>
 </html>
