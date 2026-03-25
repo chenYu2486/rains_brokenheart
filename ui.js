@@ -12,6 +12,17 @@
     };
 
     const normalizeRole = (role) => role === 'ai' ? 'assistant' : role;
+    const formatPageLabel = (source) => {
+        const start = Number(source?.pageStart ?? source?.page_start) || 0;
+        const end = Number(source?.pageEnd ?? source?.page_end) || start;
+        if (!start && !end) return '页码未知';
+        if (start === end) return `第 ${start} 页`;
+        return `第 ${start}-${end} 页`;
+    };
+    const formatScoreLabel = (score) => {
+        if (!Number.isFinite(Number(score))) return '';
+        return `匹配 ${(Number(score) * 100).toFixed(0)}%`;
+    };
 
     const riskClassMap = {
         low: 'bg-emerald-500/12 text-emerald-300 border border-emerald-500/25',
@@ -63,6 +74,12 @@
                 cfgTherapy: document.getElementById('cfgTherapy'),
                 cfgIntakeTurns: document.getElementById('cfgIntakeTurns'),
                 cfgReassessEvery: document.getElementById('cfgReassessEvery'),
+                cfgRagEnabled: document.getElementById('cfgRagEnabled'),
+                cfgKbId: document.getElementById('cfgKbId'),
+                cfgKbPath: document.getElementById('cfgKbPath'),
+                cfgRagTopK: document.getElementById('cfgRagTopK'),
+                cfgRagMinScore: document.getElementById('cfgRagMinScore'),
+                cfgRagStatus: document.getElementById('cfgRagStatus'),
                 reportStage: document.getElementById('reportStage'),
                 reportUpdatedAt: document.getElementById('reportUpdatedAt'),
                 riskBadge: document.getElementById('riskBadge'),
@@ -174,7 +191,7 @@
             messages.forEach((message) => this.appendMessage(message));
         },
 
-        appendMessage({ text, role, isSystem = false }) {
+        appendMessage({ text, role, isSystem = false, sources = [] }) {
             const normalizedRole = normalizeRole(role);
             const wrap = document.createElement('div');
             wrap.className = `flex ${isSystem ? 'justify-center' : (normalizedRole === 'user' ? 'justify-end' : 'justify-start')} msg-anim`;
@@ -185,15 +202,25 @@
                 line.textContent = `--- ${text} ---`;
                 wrap.appendChild(line);
             } else {
+                const column = document.createElement('div');
+                column.className = 'max-w-[88%] space-y-3';
+
                 const bubble = document.createElement('div');
                 bubble.className = [
-                    'max-w-[88%] p-4 rounded-2xl text-[13px] leading-relaxed shadow-xl whitespace-pre-wrap',
+                    'p-4 rounded-2xl text-[13px] leading-relaxed shadow-xl whitespace-pre-wrap',
                     normalizedRole === 'user'
                         ? 'bg-white/10 border border-white/20 text-white rounded-tr-none'
                         : 'bg-black/40 border border-amber-500/20 text-white/90 rounded-tl-none'
                 ].join(' ');
                 bubble.textContent = text;
-                wrap.appendChild(bubble);
+                column.appendChild(bubble);
+
+                if (normalizedRole === 'assistant') {
+                    const citations = this.buildCitationBlock(sources);
+                    if (citations) column.appendChild(citations);
+                }
+
+                wrap.appendChild(column);
             }
 
             this.els.chatBox.appendChild(wrap);
@@ -205,14 +232,18 @@
             const wrap = document.createElement('div');
             wrap.className = 'flex justify-start msg-anim';
 
+            const column = document.createElement('div');
+            column.className = 'max-w-[88%] space-y-3';
+
             const bubble = document.createElement('div');
-            bubble.className = 'max-w-[88%] p-4 rounded-2xl rounded-tl-none text-[13px] leading-relaxed shadow-xl whitespace-pre-wrap bg-black/40 border border-amber-500/20 text-white/90';
+            bubble.className = 'p-4 rounded-2xl rounded-tl-none text-[13px] leading-relaxed shadow-xl whitespace-pre-wrap bg-black/40 border border-amber-500/20 text-white/90';
             bubble.textContent = '...';
 
-            wrap.appendChild(bubble);
+            column.appendChild(bubble);
+            wrap.appendChild(column);
             this.els.chatBox.appendChild(wrap);
             this.scrollChatToBottom();
-            return { wrap, bubble };
+            return { wrap, column, bubble };
         },
 
         updateAssistantStream(handle, text) {
@@ -220,9 +251,59 @@
             this.scrollChatToBottom();
         },
 
-        finishAssistantStream(handle, text) {
+        finishAssistantStream(handle, text, sources = []) {
             handle.bubble.textContent = text || '我还在这里。';
+            if (handle.citationBlock) {
+                handle.citationBlock.remove();
+                handle.citationBlock = null;
+            }
+            const citationBlock = this.buildCitationBlock(sources);
+            if (citationBlock) {
+                handle.column.appendChild(citationBlock);
+                handle.citationBlock = citationBlock;
+            }
             this.scrollChatToBottom();
+        },
+
+        buildCitationBlock(sources = []) {
+            if (!Array.isArray(sources) || !sources.length) return null;
+
+            const container = document.createElement('div');
+            container.className = 'space-y-2';
+
+            const heading = document.createElement('div');
+            heading.className = 'px-1 text-[10px] tracking-[0.25em] uppercase text-amber-200/70';
+            heading.textContent = '知识库引用';
+            container.appendChild(heading);
+
+            sources.forEach((source, index) => {
+                const card = document.createElement('div');
+                card.className = 'rounded-2xl border border-amber-500/15 bg-amber-500/5 px-3 py-3';
+
+                const top = document.createElement('div');
+                top.className = 'flex items-start justify-between gap-3';
+
+                const title = document.createElement('div');
+                title.className = 'text-[11px] font-bold text-amber-100/90';
+                title.textContent = source.title || `引用 ${index + 1}`;
+
+                const meta = document.createElement('div');
+                meta.className = 'text-[10px] text-white/45 text-right shrink-0';
+                meta.textContent = [formatPageLabel(source), formatScoreLabel(source.score)].filter(Boolean).join(' · ');
+
+                top.appendChild(title);
+                top.appendChild(meta);
+                card.appendChild(top);
+
+                const preview = document.createElement('div');
+                preview.className = 'mt-2 text-[11px] leading-5 text-white/65';
+                preview.textContent = source.textPreview || source.text_preview || '';
+                card.appendChild(preview);
+
+                container.appendChild(card);
+            });
+
+            return container;
         },
 
         addTyping() {
@@ -386,6 +467,11 @@
             this.els.cfgTherapy.value = settings.therapyModel || '';
             this.els.cfgIntakeTurns.value = settings.intakeTurns || '';
             this.els.cfgReassessEvery.value = settings.reassessEvery || '';
+            this.els.cfgRagEnabled.checked = Boolean(settings.ragEnabled);
+            this.els.cfgKbId.value = settings.ragKnowledgeBaseId || '';
+            this.els.cfgKbPath.value = settings.ragKnowledgeBasePath || '';
+            this.els.cfgRagTopK.value = settings.ragTopK || '';
+            this.els.cfgRagMinScore.value = settings.ragMinScore ?? '';
         },
 
         readSettings() {
@@ -395,8 +481,24 @@
                 assessModel: this.els.cfgAssess.value.trim(),
                 therapyModel: this.els.cfgTherapy.value.trim(),
                 intakeTurns: Number(this.els.cfgIntakeTurns.value),
-                reassessEvery: Number(this.els.cfgReassessEvery.value)
+                reassessEvery: Number(this.els.cfgReassessEvery.value),
+                ragEnabled: this.els.cfgRagEnabled.checked,
+                ragKnowledgeBaseId: this.els.cfgKbId.value.trim(),
+                ragKnowledgeBasePath: this.els.cfgKbPath.value.trim(),
+                ragTopK: Number(this.els.cfgRagTopK.value),
+                ragMinScore: Number(this.els.cfgRagMinScore.value)
             };
+        },
+
+        updateRagStatus(text, tone = 'muted') {
+            if (!this.els.cfgRagStatus) return;
+            const toneClass = {
+                muted: 'text-white/35',
+                ready: 'text-emerald-300/80',
+                error: 'text-red-300/85'
+            };
+            this.els.cfgRagStatus.className = `text-[10px] mt-2 ${toneClass[tone] || toneClass.muted}`;
+            this.els.cfgRagStatus.textContent = text;
         },
 
         scrollChatToBottom() {

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -366,6 +365,47 @@
                         <p class="text-[9px] text-white/30 mt-1">每收到几次用户输入后追踪一次</p>
                     </div>
                 </div>
+
+                <div class="pt-2 border-t border-white/5 space-y-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <div class="text-xs text-white/70 font-bold tracking-widest">本地知识库 RAG</div>
+                            <p class="text-[9px] text-white/30 mt-1">在浏览器里做本地检索，再把命中的知识片段拼进模型上下文。</p>
+                        </div>
+                        <label class="inline-flex items-center gap-2 text-xs text-white/70">
+                            <input type="checkbox" id="cfgRagEnabled" class="accent-amber-500">
+                            启用
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs text-white/50 block mb-1">知识库 ID</label>
+                            <input type="text" id="cfgKbId" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
+                            <p class="text-[9px] text-white/30 mt-1">默认内置当前 DSM-5-TR 知识库</p>
+                        </div>
+                        <div>
+                            <label class="text-xs text-white/50 block mb-1">知识库路径（可选）</label>
+                            <input type="text" id="cfgKbPath" placeholder="./data/kb/dsm5_psychosis_zh.json" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
+                            <p class="text-[9px] text-white/30 mt-1">找不到内置知识库时再尝试这个路径</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs text-white/50 block mb-1">召回条数 Top-K</label>
+                            <input type="number" id="cfgRagTopK" min="1" max="6" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
+                            <p class="text-[9px] text-white/30 mt-1">每轮最多带几段知识片段给模型</p>
+                        </div>
+                        <div>
+                            <label class="text-xs text-white/50 block mb-1">最小匹配分数</label>
+                            <input type="number" id="cfgRagMinScore" min="0" max="1" step="0.01" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-amber-500 text-white/80">
+                            <p class="text-[9px] text-white/30 mt-1">分数越高，引用越保守</p>
+                        </div>
+                    </div>
+
+                    <p id="cfgRagStatus" class="text-[10px] text-white/35">等待加载本地知识库...</p>
+                </div>
             </div>
 
             <div class="mt-8 flex justify-end">
@@ -377,6 +417,8 @@
     <script src="./config.js" defer></script>
     <script src="./api.js" defer></script>
     <script src="./ui.js" defer></script>
+    <script src="./data/kb/dsm5_psychosis_zh.js" defer></script>
+    <script src="./rag.js" defer></script>
     <script src="./main.js" defer></script>
 </body>
 </html>
