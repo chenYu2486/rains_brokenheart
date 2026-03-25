@@ -1,6 +1,7 @@
 (() => {
     const Config = window.AppConfig;
     const Api = window.AppApi;
+    const Rag = window.AppRag;
     const UI = window.AppUI;
 
     const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -8,6 +9,10 @@
     const toInt = (value, fallback) => {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? Math.round(parsed) : fallback;
+    };
+    const toFloat = (value, fallback) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
     };
 
     const createSessionState = () => ({
@@ -40,7 +45,12 @@
             assessModel: saved.assessModel || Config.defaults.assessModel,
             therapyModel: saved.therapyModel || Config.defaults.therapyModel,
             intakeTurns: clamp(toInt(saved.intakeTurns, Config.defaults.intakeTurns), 2, 8),
-            reassessEvery: clamp(toInt(saved.reassessEvery, Config.defaults.reassessEvery), 3, 12)
+            reassessEvery: clamp(toInt(saved.reassessEvery, Config.defaults.reassessEvery), 3, 12),
+            ragEnabled: typeof saved.ragEnabled === 'boolean' ? saved.ragEnabled : Config.defaults.ragEnabled,
+            ragKnowledgeBaseId: saved.ragKnowledgeBaseId || Config.defaults.ragKnowledgeBaseId,
+            ragKnowledgeBasePath: saved.ragKnowledgeBasePath || Config.defaults.ragKnowledgeBasePath,
+            ragTopK: clamp(toInt(saved.ragTopK, Config.defaults.ragTopK), 1, 6),
+            ragMinScore: clamp(toFloat(saved.ragMinScore, Config.defaults.ragMinScore), 0, 1)
         };
     }
 
@@ -173,6 +183,14 @@
         State.history = [{ role: 'system', content }, ...baseConversation()];
     }
 
+    function insertSystemMessage(messages, content) {
+        if (!content) return messages;
+        if (messages[0]?.role === 'system') {
+            return [messages[0], { role: 'system', content }, ...messages.slice(1)];
+        }
+        return [{ role: 'system', content }, ...messages];
+    }
+
     function ensureApiReady() {
         if (State.settings.apiKey) return true;
         alert('请先在设置中配置 API Key。');
@@ -254,7 +272,80 @@
         }
     };
 
-    async function streamAssistantReply({ model, messages, temperature, errorPrefix }) {
+    async function refreshRagStatus() {
+        if (!UI.updateRagStatus) return null;
+
+        if (!State.settings.ragEnabled) {
+            UI.updateRagStatus('RAG 已关闭，本轮不会检索本地知识库。', 'muted');
+            return null;
+        }
+
+        if (!Rag) {
+            UI.updateRagStatus('RAG 模块未加载，无法使用本地知识库。', 'error');
+            return null;
+        }
+
+        try {
+            const info = await Rag.warmup(State.settings);
+            UI.updateRagStatus(`已加载知识库：${info.title} · ${info.chunkCount} 段 / ${info.pageCount} 页`, 'ready');
+            return info;
+        } catch (error) {
+            console.error(error);
+            UI.updateRagStatus(`知识库加载失败：${error.message || '无法读取知识库'}`, 'error');
+            return null;
+        }
+    }
+
+    function toCitationSources(results = []) {
+        return results.map((item) => ({
+            chunkId: item.chunk_id,
+            title: item.title,
+            pageStart: item.page_start,
+            pageEnd: item.page_end,
+            pageLabel: item.page_label,
+            textPreview: item.text_preview,
+            score: item.score,
+            sourcePath: item.source_path
+        }));
+    }
+
+    async function buildRagAugmentedMessages({ messages, userQuery }) {
+        if (!State.settings.ragEnabled || !userQuery?.trim() || !Rag) {
+            return { messages, sources: [] };
+        }
+
+        try {
+            const { knowledgeBase, results } = await Rag.search({
+                query: userQuery,
+                settings: State.settings
+            });
+
+            if (!results.length) {
+                UI.updateRagStatus('本轮没有命中足够相关的知识片段，已按普通对话继续。', 'muted');
+                return { messages, sources: [] };
+            }
+
+            UI.updateRagStatus(`本轮命中 ${results.length} 条知识片段 · ${knowledgeBase?.title || '本地知识库'}`, 'ready');
+            return {
+                messages: insertSystemMessage(
+                    messages,
+                    Config.prompts.buildRagContextPrompt({
+                        query: userQuery,
+                        knowledgeBase,
+                        results
+                    })
+                ),
+                sources: toCitationSources(results)
+            };
+        } catch (error) {
+            console.error(error);
+            UI.updateRagStatus(`知识库检索失败：${error.message || '暂时无法检索'}`, 'error');
+            return { messages, sources: [] };
+        }
+    }
+
+    async function streamAssistantReply({ model, messages, temperature, errorPrefix, userQuery = '' }) {
+        const { messages: requestMessages, sources } = await buildRagAugmentedMessages({ messages, userQuery });
         const handle = UI.beginAssistantStream();
 
         try {
@@ -262,15 +353,15 @@
                 apiBase: State.settings.apiBase,
                 apiKey: State.settings.apiKey,
                 model,
-                messages,
+                messages: requestMessages,
                 temperature,
                 onChunk: (text) => UI.updateAssistantStream(handle, text)
             });
 
             if (!fullText || !fullText.trim()) throw new Error('模型没有返回内容');
 
-            UI.finishAssistantStream(handle, fullText);
-            State.displayMessages.push({ text: fullText, role: 'assistant', isSystem: false });
+            UI.finishAssistantStream(handle, fullText, sources);
+            State.displayMessages.push({ text: fullText, role: 'assistant', isSystem: false, sources });
             State.history.push({ role: 'assistant', content: fullText });
             return fullText;
         } catch (error) {
@@ -432,6 +523,7 @@
             UI.renderArchives(Archive.getAll(), State.activeArchiveId);
             UI.lockChat();
             updateStatusFromState();
+            refreshRagStatus();
         },
 
         toggleTag(tagId) {
@@ -458,12 +550,18 @@
                 assessModel: next.assessModel || Config.defaults.assessModel,
                 therapyModel: next.therapyModel || Config.defaults.therapyModel,
                 intakeTurns: clamp(toInt(next.intakeTurns, Config.defaults.intakeTurns), 2, 8),
-                reassessEvery: clamp(toInt(next.reassessEvery, Config.defaults.reassessEvery), 3, 12)
+                reassessEvery: clamp(toInt(next.reassessEvery, Config.defaults.reassessEvery), 3, 12),
+                ragEnabled: Boolean(next.ragEnabled),
+                ragKnowledgeBaseId: next.ragKnowledgeBaseId || Config.defaults.ragKnowledgeBaseId,
+                ragKnowledgeBasePath: next.ragKnowledgeBasePath || Config.defaults.ragKnowledgeBasePath,
+                ragTopK: clamp(toInt(next.ragTopK, Config.defaults.ragTopK), 1, 6),
+                ragMinScore: clamp(toFloat(next.ragMinScore, Config.defaults.ragMinScore), 0, 1)
             };
             persistSettings();
             UI.writeSettings(State.settings);
             UI.toggleModal('settingsModal', false);
             updateStatusFromState();
+            refreshRagStatus();
         },
 
         async startAssessment() {
@@ -502,7 +600,8 @@
                             model: State.settings.assessModel,
                             messages: State.history,
                             temperature: Config.defaults.assessTemperature,
-                            errorPrefix: '建档评估中断'
+                            errorPrefix: '建档评估中断',
+                            userQuery: text
                         });
                     }
                 } else if (State.phase === 'therapy') {
@@ -515,7 +614,8 @@
                         model: State.settings.therapyModel,
                         messages: State.history,
                         temperature: Config.defaults.therapyTemperature,
-                        errorPrefix: '疗愈对话中断'
+                        errorPrefix: '疗愈对话中断',
+                        userQuery: text
                     });
                 }
             } finally {
