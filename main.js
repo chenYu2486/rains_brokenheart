@@ -140,6 +140,17 @@
         return `${fallbackPrefix}: ${error.message || '链路暂时中断'}`;
     }
 
+    function createAssistantMeta({ model, role, stage, stageLabel, sources = [], failed = false }) {
+        return {
+            model: model || '',
+            role: role || 'assistant',
+            stage: stage || 'reply',
+            stageLabel: stageLabel || '普通回复',
+            sourceCount: Array.isArray(sources) ? sources.length : 0,
+            failed: Boolean(failed)
+        };
+    }
+
     function updateStatusFromState(customText) {
         if (State.phase === 'idle') {
             UI.updateStatus(customText || '等待选择建档方向...', 'idle');
@@ -165,8 +176,8 @@
         UI.els.sendBtn.disabled = flag || locked;
     }
 
-    function addDisplayMessage(text, role, isSystem = false) {
-        const message = { text, role, isSystem };
+    function addDisplayMessage(text, role, isSystem = false, extra = {}) {
+        const message = { text, role, isSystem, ...extra };
         State.displayMessages.push(message);
         UI.appendMessage(message);
     }
@@ -344,7 +355,14 @@
         }
     }
 
-    async function streamAssistantReply({ model, messages, temperature, errorPrefix, userQuery = '' }) {
+    async function streamAssistantReply({
+        model,
+        messages,
+        temperature,
+        errorPrefix,
+        userQuery = '',
+        messageMeta = {}
+    }) {
         const { messages: requestMessages, sources } = await buildRagAugmentedMessages({ messages, userQuery });
         const handle = UI.beginAssistantStream();
 
@@ -360,14 +378,27 @@
 
             if (!fullText || !fullText.trim()) throw new Error('模型没有返回内容');
 
-            UI.finishAssistantStream(handle, fullText, sources);
-            State.displayMessages.push({ text: fullText, role: 'assistant', isSystem: false, sources });
+            const meta = createAssistantMeta({
+                model,
+                sources,
+                ...messageMeta
+            });
+
+            UI.finishAssistantStream(handle, fullText, sources, meta);
+            State.displayMessages.push({ text: fullText, role: 'assistant', isSystem: false, sources, meta });
             State.history.push({ role: 'assistant', content: fullText });
             return fullText;
         } catch (error) {
             const message = visibleAssistantError(error, errorPrefix);
-            UI.finishAssistantStream(handle, message);
-            State.displayMessages.push({ text: message, role: 'assistant', isSystem: false });
+            const meta = createAssistantMeta({
+                model,
+                sources: [],
+                failed: true,
+                ...messageMeta
+            });
+
+            UI.finishAssistantStream(handle, message, [], meta);
+            State.displayMessages.push({ text: message, role: 'assistant', isSystem: false, meta });
             return null;
         }
     }
@@ -398,6 +429,12 @@
             });
 
             const report = parseReport(raw, reportPhase);
+            report.meta = {
+                model: State.settings.assessModel,
+                role: 'assessment',
+                stage: reportPhase === 'initial' ? 'assessment-initial' : 'assessment-followup',
+                stageLabel: reportPhase === 'initial' ? '首次评估画像' : '追踪评估画像'
+            };
             State.latestReport = report;
             State.reports.push(report);
             State.therapyTurnsSinceReview = 0;
@@ -443,7 +480,12 @@
                 }
             ],
             temperature: Config.defaults.assessTemperature,
-            errorPrefix: '建档模型唤醒失败'
+            errorPrefix: '建档模型唤醒失败',
+            messageMeta: {
+                role: 'assessment',
+                stage: 'intake-kickoff',
+                stageLabel: '建档开场提问'
+            }
         });
     }
 
@@ -462,7 +504,12 @@
             model: State.settings.therapyModel,
             messages: State.history,
             temperature: Config.defaults.therapyTemperature,
-            errorPrefix: '疗愈模型连接失败'
+            errorPrefix: '疗愈模型连接失败',
+            messageMeta: {
+                role: 'therapy',
+                stage: 'therapy-handoff',
+                stageLabel: '进入陪伴模式'
+            }
         });
     }
 
@@ -601,7 +648,12 @@
                             messages: State.history,
                             temperature: Config.defaults.assessTemperature,
                             errorPrefix: '建档评估中断',
-                            userQuery: text
+                            userQuery: text,
+                            messageMeta: {
+                                role: 'assessment',
+                                stage: 'intake-followup',
+                                stageLabel: '建档追问'
+                            }
                         });
                     }
                 } else if (State.phase === 'therapy') {
@@ -615,7 +667,12 @@
                         messages: State.history,
                         temperature: Config.defaults.therapyTemperature,
                         errorPrefix: '疗愈对话中断',
-                        userQuery: text
+                        userQuery: text,
+                        messageMeta: {
+                            role: 'therapy',
+                            stage: 'therapy-reply',
+                            stageLabel: '陪伴回复'
+                        }
                     });
                 }
             } finally {

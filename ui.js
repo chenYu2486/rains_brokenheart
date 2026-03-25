@@ -23,6 +23,11 @@
         if (!Number.isFinite(Number(score))) return '';
         return `匹配 ${(Number(score) * 100).toFixed(0)}%`;
     };
+    const formatModelRole = (role) => {
+        if (role === 'assessment') return '评估模型';
+        if (role === 'therapy') return '陪伴模型';
+        return '模型';
+    };
 
     const riskClassMap = {
         low: 'bg-emerald-500/12 text-emerald-300 border border-emerald-500/25',
@@ -82,6 +87,7 @@
                 cfgRagStatus: document.getElementById('cfgRagStatus'),
                 reportStage: document.getElementById('reportStage'),
                 reportUpdatedAt: document.getElementById('reportUpdatedAt'),
+                reportModel: document.getElementById('reportModel'),
                 riskBadge: document.getElementById('riskBadge'),
                 riskAlert: document.getElementById('riskAlert'),
                 scoreStress: document.getElementById('scoreStress'),
@@ -191,7 +197,7 @@
             messages.forEach((message) => this.appendMessage(message));
         },
 
-        appendMessage({ text, role, isSystem = false, sources = [] }) {
+        appendMessage({ text, role, isSystem = false, sources = [], meta = null }) {
             const normalizedRole = normalizeRole(role);
             const wrap = document.createElement('div');
             wrap.className = `flex ${isSystem ? 'justify-center' : (normalizedRole === 'user' ? 'justify-end' : 'justify-start')} msg-anim`;
@@ -213,6 +219,8 @@
                         : 'bg-black/40 border border-amber-500/20 text-white/90 rounded-tl-none'
                 ].join(' ');
                 bubble.textContent = text;
+                const assistantMeta = normalizedRole === 'assistant' ? this.buildAssistantMetaBlock(meta) : null;
+                if (assistantMeta) column.appendChild(assistantMeta);
                 column.appendChild(bubble);
 
                 if (normalizedRole === 'assistant') {
@@ -251,8 +259,17 @@
             this.scrollChatToBottom();
         },
 
-        finishAssistantStream(handle, text, sources = []) {
+        finishAssistantStream(handle, text, sources = [], meta = null) {
             handle.bubble.textContent = text || '我还在这里。';
+            if (handle.metaBlock) {
+                handle.metaBlock.remove();
+                handle.metaBlock = null;
+            }
+            const assistantMeta = this.buildAssistantMetaBlock(meta);
+            if (assistantMeta) {
+                handle.column.insertBefore(assistantMeta, handle.bubble);
+                handle.metaBlock = assistantMeta;
+            }
             if (handle.citationBlock) {
                 handle.citationBlock.remove();
                 handle.citationBlock = null;
@@ -263,6 +280,29 @@
                 handle.citationBlock = citationBlock;
             }
             this.scrollChatToBottom();
+        },
+
+        buildAssistantMetaBlock(meta) {
+            if (!meta || (!meta.model && !meta.stageLabel)) return null;
+
+            const block = document.createElement('div');
+            block.className = 'flex items-center gap-2 px-1';
+
+            const primary = document.createElement('span');
+            primary.className = meta.failed
+                ? 'inline-flex items-center rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-1 text-[10px] tracking-[0.18em] uppercase text-red-100/85'
+                : 'inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] tracking-[0.18em] uppercase text-white/55';
+            primary.textContent = `${formatModelRole(meta.role)} · ${meta.stageLabel || '回复'}`;
+            block.appendChild(primary);
+
+            if (meta.model) {
+                const model = document.createElement('span');
+                model.className = 'text-[10px] text-white/35';
+                model.textContent = meta.model;
+                block.appendChild(model);
+            }
+
+            return block;
         },
 
         buildCitationBlock(sources = []) {
@@ -360,6 +400,11 @@
                 this.els.panelReport.classList.remove('opacity-0');
                 this.els.reportStage.textContent = report.stage || '状态追踪';
                 this.els.reportUpdatedAt.textContent = formatDateTime(report.createdAt);
+                if (this.els.reportModel) {
+                    this.els.reportModel.textContent = report.meta?.model
+                        ? `${formatModelRole(report.meta?.role)} · ${report.meta?.stageLabel || '评估'} · ${report.meta?.model}`
+                        : '评估模型来源未记录';
+                }
 
                 this.els.riskBadge.className = `px-3 py-1 rounded-full text-[10px] tracking-widest uppercase ${riskClassMap[report.warningLevel] || riskClassMap.low}`;
                 this.els.riskBadge.textContent = `风险 ${report.warningLevel || 'low'}`;
@@ -411,6 +456,7 @@
         hideReport() {
             this.els.panelReport.classList.add('hidden', 'opacity-0');
             this.els.panelKeywords.classList.remove('hidden');
+            if (this.els.reportModel) this.els.reportModel.textContent = '评估模型来源未记录';
         },
 
         paintMetric(metricKey, value) {
