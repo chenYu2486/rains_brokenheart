@@ -44,6 +44,12 @@
             apiKey: saved.apiKey || legacyApiKey || '',
             assessModel: saved.assessModel || Config.defaults.assessModel,
             therapyModel: saved.therapyModel || Config.defaults.therapyModel,
+            assessEnableThinking: typeof saved.assessEnableThinking === 'boolean'
+                ? saved.assessEnableThinking
+                : Config.defaults.assessEnableThinking,
+            therapyEnableThinking: typeof saved.therapyEnableThinking === 'boolean'
+                ? saved.therapyEnableThinking
+                : Config.defaults.therapyEnableThinking,
             intakeTurns: clamp(toInt(saved.intakeTurns, Config.defaults.intakeTurns), 2, 8),
             reassessEvery: clamp(toInt(saved.reassessEvery, Config.defaults.reassessEvery), 3, 12),
             ragEnabled: typeof saved.ragEnabled === 'boolean' ? saved.ragEnabled : Config.defaults.ragEnabled,
@@ -361,7 +367,8 @@
         temperature,
         errorPrefix,
         userQuery = '',
-        messageMeta = {}
+        messageMeta = {},
+        enableThinking
     }) {
         const { messages: requestMessages, sources } = await buildRagAugmentedMessages({ messages, userQuery });
         const handle = UI.beginAssistantStream();
@@ -373,6 +380,7 @@
                 model,
                 messages: requestMessages,
                 temperature,
+                enableThinking,
                 onChunk: (text) => UI.updateAssistantStream(handle, text)
             });
 
@@ -412,6 +420,7 @@
                 apiBase: State.settings.apiBase,
                 apiKey: State.settings.apiKey,
                 model: State.settings.assessModel,
+                enableThinking: State.settings.assessEnableThinking,
                 messages: [
                     ...State.history,
                     {
@@ -470,6 +479,7 @@
 
         await streamAssistantReply({
             model: State.settings.assessModel,
+            enableThinking: State.settings.assessEnableThinking,
             messages: [
                 ...State.history,
                 {
@@ -502,6 +512,7 @@
 
         await streamAssistantReply({
             model: State.settings.therapyModel,
+            enableThinking: State.settings.therapyEnableThinking,
             messages: State.history,
             temperature: Config.defaults.therapyTemperature,
             errorPrefix: '疗愈模型连接失败',
@@ -596,6 +607,8 @@
                 apiKey: next.apiKey || '',
                 assessModel: next.assessModel || Config.defaults.assessModel,
                 therapyModel: next.therapyModel || Config.defaults.therapyModel,
+                assessEnableThinking: Boolean(next.assessEnableThinking),
+                therapyEnableThinking: Boolean(next.therapyEnableThinking),
                 intakeTurns: clamp(toInt(next.intakeTurns, Config.defaults.intakeTurns), 2, 8),
                 reassessEvery: clamp(toInt(next.reassessEvery, Config.defaults.reassessEvery), 3, 12),
                 ragEnabled: Boolean(next.ragEnabled),
@@ -645,6 +658,7 @@
                     } else {
                         await streamAssistantReply({
                             model: State.settings.assessModel,
+                            enableThinking: State.settings.assessEnableThinking,
                             messages: State.history,
                             temperature: Config.defaults.assessTemperature,
                             errorPrefix: '建档评估中断',
@@ -664,6 +678,7 @@
 
                     await streamAssistantReply({
                         model: State.settings.therapyModel,
+                        enableThinking: State.settings.therapyEnableThinking,
                         messages: State.history,
                         temperature: Config.defaults.therapyTemperature,
                         errorPrefix: '疗愈对话中断',

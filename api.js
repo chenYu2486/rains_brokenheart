@@ -34,23 +34,35 @@
         return error instanceof TypeError;
     };
 
-    const streamRequest = async ({ apiBase, apiKey, model, messages, temperature, timeoutMs, onChunk }) => {
+    const streamRequest = async ({
+        apiBase,
+        apiKey,
+        model,
+        messages,
+        temperature,
+        timeoutMs,
+        onChunk,
+        enableThinking
+    }) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
 
         try {
+            const payload = {
+                model,
+                messages,
+                temperature,
+                stream: true
+            };
+            if (typeof enableThinking === 'boolean') payload.enable_thinking = enableThinking;
+
             const response = await fetch(apiBase, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}`
                 },
-                body: JSON.stringify({
-                    model,
-                    messages,
-                    temperature,
-                    stream: true
-                }),
+                body: JSON.stringify(payload),
                 signal: controller.signal
             });
 
@@ -98,22 +110,33 @@
         }
     };
 
-    const nonStreamRequest = async ({ apiBase, apiKey, model, messages, temperature, timeoutMs }) => {
+    const nonStreamRequest = async ({
+        apiBase,
+        apiKey,
+        model,
+        messages,
+        temperature,
+        timeoutMs,
+        enableThinking
+    }) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
 
         try {
+            const payload = {
+                model,
+                messages,
+                temperature
+            };
+            if (typeof enableThinking === 'boolean') payload.enable_thinking = enableThinking;
+
             const response = await fetch(apiBase, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}`
                 },
-                body: JSON.stringify({
-                    model,
-                    messages,
-                    temperature
-                }),
+                body: JSON.stringify(payload),
                 signal: controller.signal
             });
 
@@ -136,14 +159,23 @@
             messages,
             temperature = 0.7,
             timeoutMs = 60000,
-            maxRetries = 2
+            maxRetries = 2,
+            enableThinking
         }) {
             if (!apiKey) throw new Error('请先配置 API Key。');
 
             let lastError;
             for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
                 try {
-                    return await nonStreamRequest({ apiBase, apiKey, model, messages, temperature, timeoutMs });
+                    return await nonStreamRequest({
+                        apiBase,
+                        apiKey,
+                        model,
+                        messages,
+                        temperature,
+                        timeoutMs,
+                        enableThinking
+                    });
                 } catch (error) {
                     lastError = error;
                     if (!shouldRetry(error, attempt, maxRetries)) break;
@@ -162,7 +194,8 @@
             temperature = 0.7,
             timeoutMs = 60000,
             maxRetries = 1,
-            onChunk
+            onChunk,
+            enableThinking
         }) {
             if (!apiKey) throw new Error('请先配置 API Key。');
 
@@ -176,11 +209,21 @@
                         messages,
                         temperature,
                         timeoutMs,
-                        onChunk
+                        onChunk,
+                        enableThinking
                     });
 
                     if (text) return text;
-                    return await this.chat({ apiBase, apiKey, model, messages, temperature, timeoutMs, maxRetries: 0 });
+                    return await this.chat({
+                        apiBase,
+                        apiKey,
+                        model,
+                        messages,
+                        temperature,
+                        timeoutMs,
+                        maxRetries: 0,
+                        enableThinking
+                    });
                 } catch (error) {
                     lastError = error;
                     if (!shouldRetry(error, attempt, maxRetries)) break;

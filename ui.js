@@ -77,6 +77,8 @@
                 cfgKey: document.getElementById('cfgKey'),
                 cfgAssess: document.getElementById('cfgAssess'),
                 cfgTherapy: document.getElementById('cfgTherapy'),
+                cfgAssessThinking: document.getElementById('cfgAssessThinking'),
+                cfgTherapyThinking: document.getElementById('cfgTherapyThinking'),
                 cfgIntakeTurns: document.getElementById('cfgIntakeTurns'),
                 cfgReassessEvery: document.getElementById('cfgReassessEvery'),
                 cfgRagEnabled: document.getElementById('cfgRagEnabled'),
@@ -511,6 +513,8 @@
             this.els.cfgKey.value = settings.apiKey || '';
             this.els.cfgAssess.value = settings.assessModel || '';
             this.els.cfgTherapy.value = settings.therapyModel || '';
+            this.els.cfgAssessThinking.checked = Boolean(settings.assessEnableThinking);
+            this.els.cfgTherapyThinking.checked = Boolean(settings.therapyEnableThinking);
             this.els.cfgIntakeTurns.value = settings.intakeTurns || '';
             this.els.cfgReassessEvery.value = settings.reassessEvery || '';
             this.els.cfgRagEnabled.checked = Boolean(settings.ragEnabled);
@@ -526,6 +530,8 @@
                 apiKey: this.els.cfgKey.value.trim(),
                 assessModel: this.els.cfgAssess.value.trim(),
                 therapyModel: this.els.cfgTherapy.value.trim(),
+                assessEnableThinking: this.els.cfgAssessThinking.checked,
+                therapyEnableThinking: this.els.cfgTherapyThinking.checked,
                 intakeTurns: Number(this.els.cfgIntakeTurns.value),
                 reassessEvery: Number(this.els.cfgReassessEvery.value),
                 ragEnabled: this.els.cfgRagEnabled.checked,
