@@ -51,6 +51,10 @@
         init() {
             this.cacheEls();
             this.initCanvasBg();
+            if (this.els.btnToggleArchive && !this.els.btnToggleArchive.dataset.bound) {
+                this.els.btnToggleArchive.addEventListener('click', () => this.toggleArchiveCollapsed());
+                this.els.btnToggleArchive.dataset.bound = '1';
+            }
             this.setArchiveCollapsed(this.readArchiveCollapsed(), { persist: false });
         },
 
@@ -131,7 +135,6 @@
             };
             this.els.btnSaveArchive.onclick = handlers.onSaveArchive;
             this.els.btnNewChat.onclick = handlers.onNewChat;
-            this.els.btnToggleArchive.onclick = () => this.toggleArchiveCollapsed();
         },
 
         toggleModal(id, force) {
@@ -161,15 +164,18 @@
             if (archivePanel) {
                 archivePanel.classList.toggle('pb-3', isCollapsed);
                 archivePanel.classList.toggle('p-4', !isCollapsed);
+                archivePanel.classList.toggle('overflow-hidden', isCollapsed);
+                archivePanel.dataset.collapsed = isCollapsed ? '1' : '0';
             }
 
             if (archivePanelBody) {
-                archivePanelBody.classList.toggle('hidden', isCollapsed);
+                archivePanelBody.hidden = isCollapsed;
+                archivePanelBody.style.display = isCollapsed ? 'none' : '';
             }
 
             if (archivePanelHint) {
                 archivePanelHint.textContent = isCollapsed
-                    ? '已收起，避免挡住左侧评测画像；需要时可随时展开。'
+                    ? '存档区已收起，点击右侧按钮展开。'
                     : '对话可随时暂停存档，下次继续、删除，或开启新的会话。';
             }
 
