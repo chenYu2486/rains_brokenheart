@@ -1,5 +1,6 @@
 (() => {
     const { tags, limits } = window.AppConfig;
+    const ARCHIVE_PANEL_STORAGE_KEY = 'shelter_archive_panel_collapsed';
 
     const formatDateTime = (timestamp) => {
         if (!timestamp) return '--';
@@ -50,6 +51,7 @@
         init() {
             this.cacheEls();
             this.initCanvasBg();
+            this.setArchiveCollapsed(this.readArchiveCollapsed(), { persist: false });
         },
 
         cacheEls() {
@@ -70,6 +72,12 @@
                 btnSaveArchive: document.getElementById('btnSaveArchive'),
                 btnNewChat: document.getElementById('btnNewChat'),
                 archiveList: document.getElementById('archiveList'),
+                archivePanel: document.getElementById('archivePanel'),
+                archivePanelBody: document.getElementById('archivePanelBody'),
+                archivePanelHint: document.getElementById('archivePanelHint'),
+                btnToggleArchive: document.getElementById('btnToggleArchive'),
+                archiveToggleIcon: document.getElementById('archiveToggleIcon'),
+                archiveToggleText: document.getElementById('archiveToggleText'),
                 btnOpenSettings: document.getElementById('btnOpenSettings'),
                 btnCloseSettings: document.getElementById('btnCloseSettings'),
                 btnSaveSettings: document.getElementById('btnSaveSettings'),
@@ -123,6 +131,7 @@
             };
             this.els.btnSaveArchive.onclick = handlers.onSaveArchive;
             this.els.btnNewChat.onclick = handlers.onNewChat;
+            this.els.btnToggleArchive.onclick = () => this.toggleArchiveCollapsed();
         },
 
         toggleModal(id, force) {
@@ -132,6 +141,58 @@
                 return;
             }
             modal.classList.toggle('active');
+        },
+
+        readArchiveCollapsed() {
+            return localStorage.getItem(ARCHIVE_PANEL_STORAGE_KEY) === '1';
+        },
+
+        setArchiveCollapsed(collapsed, { persist = true } = {}) {
+            const isCollapsed = Boolean(collapsed);
+            const {
+                archivePanel,
+                archivePanelBody,
+                archivePanelHint,
+                archiveToggleIcon,
+                archiveToggleText,
+                btnToggleArchive
+            } = this.els;
+
+            if (archivePanel) {
+                archivePanel.classList.toggle('pb-3', isCollapsed);
+                archivePanel.classList.toggle('p-4', !isCollapsed);
+            }
+
+            if (archivePanelBody) {
+                archivePanelBody.classList.toggle('hidden', isCollapsed);
+            }
+
+            if (archivePanelHint) {
+                archivePanelHint.textContent = isCollapsed
+                    ? '已收起，避免挡住左侧评测画像；需要时可随时展开。'
+                    : '对话可随时暂停存档，下次继续、删除，或开启新的会话。';
+            }
+
+            if (archiveToggleIcon) {
+                archiveToggleIcon.classList.toggle('rotate-180', isCollapsed);
+            }
+
+            if (archiveToggleText) {
+                archiveToggleText.textContent = isCollapsed ? '展开' : '收起';
+            }
+
+            if (btnToggleArchive) {
+                btnToggleArchive.setAttribute('aria-expanded', String(!isCollapsed));
+                btnToggleArchive.setAttribute('title', isCollapsed ? '展开会话存档' : '收起会话存档');
+            }
+
+            if (persist) {
+                localStorage.setItem(ARCHIVE_PANEL_STORAGE_KEY, isCollapsed ? '1' : '0');
+            }
+        },
+
+        toggleArchiveCollapsed() {
+            this.setArchiveCollapsed(!this.readArchiveCollapsed());
         },
 
         renderTags(selectedTagIds, phase) {
@@ -395,6 +456,7 @@
         },
 
         showReport(report, reportHistory) {
+            this.setArchiveCollapsed(true);
             this.els.panelKeywords.classList.add('hidden');
             this.els.panelReport.classList.remove('hidden');
 
