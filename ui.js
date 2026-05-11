@@ -38,10 +38,10 @@
     };
 
     const metricClassMap = {
-        stress: 'from-amber-500 to-red-500',
-        friction: 'from-indigo-500 to-violet-500',
-        risk: 'from-orange-500 to-rose-500',
-        resilience: 'from-emerald-500 to-teal-400'
+        stress: 'from-amber-300 to-rose-400',
+        friction: 'from-sky-300 to-violet-300',
+        risk: 'from-orange-300 to-red-400',
+        resilience: 'from-emerald-300 to-teal-300'
     };
 
     const UI = {
@@ -50,7 +50,6 @@
 
         init() {
             this.cacheEls();
-            this.initCanvasBg();
             if (this.els.btnToggleArchive && !this.els.btnToggleArchive.dataset.bound) {
                 this.els.btnToggleArchive.addEventListener('click', () => this.toggleArchiveCollapsed());
                 this.els.btnToggleArchive.dataset.bound = '1';
@@ -60,6 +59,31 @@
 
         cacheEls() {
             this.els = {
+                onboardingView: document.getElementById('onboardingView'),
+                chatWorkspace: document.getElementById('chatWorkspace'),
+                onboardingSteps: Array.from(document.querySelectorAll('[data-onboarding-step]')),
+                stepPills: Array.from(document.querySelectorAll('[data-step-pill]')),
+                setupBase: document.getElementById('setupBase'),
+                setupKey: document.getElementById('setupKey'),
+                setupAssess: document.getElementById('setupAssess'),
+                setupTherapy: document.getElementById('setupTherapy'),
+                setupRagEnabled: document.getElementById('setupRagEnabled'),
+                setupStatus: document.getElementById('setupStatus'),
+                btnIntroNext: document.getElementById('btnIntroNext'),
+                btnWarmupBack: document.getElementById('btnWarmupBack'),
+                btnWarmupNext: document.getElementById('btnWarmupNext'),
+                btnFocusBack: document.getElementById('btnFocusBack'),
+                btnFocusNext: document.getElementById('btnFocusNext'),
+                btnFeatureBack: document.getElementById('btnFeatureBack'),
+                warmupMoodOptions: Array.from(document.querySelectorAll('[data-mood]')),
+                warmupConcern: document.getElementById('warmupConcern'),
+                warmupBody: document.getElementById('warmupBody'),
+                warmupPreference: document.getElementById('warmupPreference'),
+                warmupHope: document.getElementById('warmupHope'),
+                featureOptions: Array.from(document.querySelectorAll('[data-feature]')),
+                sideIntakePanel: document.getElementById('sideIntakePanel'),
+                profileSummary: document.getElementById('profileSummary'),
+                btnEditOnboarding: document.getElementById('btnEditOnboarding'),
                 tagContainer: document.getElementById('tagContainer'),
                 tagCounter: document.getElementById('tagCounter'),
                 tagPreview: document.getElementById('selectedTagPreview'),
@@ -72,7 +96,7 @@
                 statusDot: document.getElementById('statusDot'),
                 chatOverlay: document.getElementById('chatOverlay'),
                 overlayText: document.getElementById('overlayText'),
-                btnStartAssess: document.getElementById('btnStartAssess'),
+                btnStartAssess: document.getElementById('btnStartAssess') || document.createElement('button'),
                 btnSaveArchive: document.getElementById('btnSaveArchive'),
                 btnNewChat: document.getElementById('btnNewChat'),
                 archiveList: document.getElementById('archiveList'),
@@ -125,20 +149,21 @@
 
         bindHandlers(handlers) {
             this.handlers = handlers;
-            this.els.btnOpenSettings.onclick = handlers.onOpenSettings;
-            this.els.btnCloseSettings.onclick = handlers.onCloseSettings;
-            this.els.btnSaveSettings.onclick = handlers.onSaveSettings;
-            this.els.btnStartAssess.onclick = handlers.onStartAssessment;
-            this.els.sendBtn.onclick = handlers.onSend;
-            this.els.input.onkeypress = (event) => {
+            const safe = (el, cb) => { if (el) cb(el); };
+            safe(this.els.sendBtn, el => el.onclick = handlers.onSend);
+            safe(this.els.input, el => el.onkeypress = (event) => {
                 if (event.key === 'Enter') handlers.onSend();
-            };
-            this.els.btnSaveArchive.onclick = handlers.onSaveArchive;
-            this.els.btnNewChat.onclick = handlers.onNewChat;
+            });
+            safe(this.els.btnSaveArchive, el => el.onclick = handlers.onSaveArchive);
+            safe(this.els.btnNewChat, el => el.onclick = handlers.onNewChat);
+            safe(this.els.btnToggleArchive, el => { if (!el.dataset.bound) { el.addEventListener('click', () => this.toggleArchiveCollapsed()); el.dataset.bound = '1'; } });
+            safe(document.getElementById('btnTogglePanel'), el => el.onclick = () => this.togglePanel());
+            safe(document.getElementById('btnClosePanel'), el => el.onclick = () => this.togglePanel(false));
         },
 
         toggleModal(id, force) {
             const modal = document.getElementById(id);
+            if (!modal) return;
             if (typeof force === 'boolean') {
                 modal.classList.toggle('active', force);
                 return;
@@ -201,27 +226,146 @@
             this.setArchiveCollapsed(!this.readArchiveCollapsed());
         },
 
+        setOnboardingStep(step) {
+            if (this.els.onboardingSteps) {
+                this.els.onboardingSteps.forEach((section) => {
+                    section.classList.toggle('active', section.dataset.onboardingStep === step);
+                });
+            }
+            if (this.els.stepPills) {
+                this.els.stepPills.forEach((pill) => {
+                    pill.classList.toggle('active', pill.dataset.stepPill === step);
+                });
+            }
+        },
+
+        showOnboarding() {
+            // Galgame 统一视图，始终显示
+        },
+
+        showChatWorkspace() {
+            // Galgame 统一视图，直接解锁聊天
+            this.unlockChat();
+        },
+
+        writeSetupSettings(settings) {
+            const s = (el, cb) => { if (el) cb(el); };
+            s(this.els.setupBase, el => el.value = settings.apiBase || '');
+            s(this.els.setupKey, el => el.value = settings.apiKey || '');
+            s(this.els.setupAssess, el => el.value = settings.assessModel || '');
+            s(this.els.setupTherapy, el => el.value = settings.therapyModel || '');
+            s(this.els.setupRagEnabled, el => el.checked = Boolean(settings.ragEnabled));
+        },
+
+        readSetupSettings() {
+            const g = (el, fallback) => el ? el.value : fallback;
+            const gc = (el) => el ? el.checked : false;
+            return {
+                apiBase: g(this.els.setupBase, '').trim(),
+                apiKey: g(this.els.setupKey, '').trim(),
+                assessModel: g(this.els.setupAssess, '').trim(),
+                therapyModel: g(this.els.setupTherapy, '').trim(),
+                ragEnabled: gc(this.els.setupRagEnabled)
+            };
+        },
+
+        setSetupStatus(text, tone = 'muted') {
+            if (!this.els.setupStatus) { console?.warn?.('setupStatus element missing'); return; }
+            const toneClass = {
+                muted: 'text-white/42',
+                ready: 'text-emerald-200/90',
+                warning: 'text-amber-200/90',
+                error: 'text-red-200/90'
+            };
+            this.els.setupStatus.className = `min-h-[18px] text-xs ${toneClass[tone] || toneClass.muted}`;
+            this.els.setupStatus.textContent = text || '';
+        },
+
+        setWarmupMood(mood) {
+            if (!this.els.warmupMoodOptions) return;
+            this.els.warmupMoodOptions.forEach((button) => {
+                button.classList.toggle('active', button.dataset.mood === mood);
+            });
+        },
+
+        writeWarmupProfile(profile = {}) {
+            if (this.els.warmupMoodOptions) this.setWarmupMood(profile.mood || '');
+            if (this.els.warmupConcern) this.els.warmupConcern.value = profile.concern || '';
+            if (this.els.warmupBody) this.els.warmupBody.value = profile.body || '';
+            if (this.els.warmupPreference) this.els.warmupPreference.value = profile.preference || '温柔接住，慢慢澄清';
+            if (this.els.warmupHope) this.els.warmupHope.value = profile.hope || '';
+        },
+
+        readWarmupProfile() {
+            return {
+                mood: document.getElementById('warmupMoodVal')?.value || '',
+                concern: this.els.warmupConcern?.value?.trim() || '',
+                body: this.els.warmupBody?.value?.trim() || '',
+                preference: this.els.warmupPreference?.value || '温柔接住，慢慢澄清',
+                hope: this.els.warmupHope?.value?.trim() || ''
+            };
+        },
+
+        renderFeatureSelection(featureIds = []) {
+            if (!this.els.featureOptions) return;
+            this.els.featureOptions.forEach((button) => {
+                button.classList.toggle('active', featureIds.includes(button.dataset.feature));
+            });
+        },
+
+        renderProfileSummary({ profile = {}, tags: selectedTags = [], features = [] } = {}) {
+            const row = (label, value) => `
+                <div class="glass-soft p-3">
+                    <div class="text-white/42">${label}</div>
+                    <div class="mt-1 text-white/78">${value || '暂未填写'}</div>
+                </div>
+            `;
+
+            const featureText = features.length ? features.join(' / ') : '温柔追问 / 动态复评';
+            this.els.profileSummary.innerHTML = [
+                row('此刻状态', profile.mood),
+                row('想先谈的事', profile.concern),
+                row('对话偏好', profile.preference),
+                row('焦点', selectedTags.length ? selectedTags.join(' / ') : ''),
+                row('功能', featureText)
+            ].join('');
+        },
+
         renderTags(selectedTagIds, phase) {
+            if (!this.els.tagContainer) return;
             const locked = phase !== 'idle';
             this.els.tagContainer.innerHTML = '';
 
-            tags.forEach((tag) => {
-                const selected = selectedTagIds.includes(tag.id);
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = [
-                    'tag-btn text-left rounded-xl p-3',
-                    selected ? 'tag-active' : '',
-                    locked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
-                ].join(' ').trim();
-                button.innerHTML = `
-                    <div class="text-sm font-bold text-white/90">${tag.label}</div>
-                    <div class="text-[10px] text-white/40 mt-1">${tag.desc}</div>
-                `;
-                if (!locked) {
-                    button.onclick = () => this.handlers.onToggleTag?.(tag.id);
-                }
-                this.els.tagContainer.appendChild(button);
+            const groups = [
+                { label: '情绪状态', ids: ['anxious', 'depressed', 'sleep', 'information'] },
+                { label: '关系与自我', ids: ['family', 'intimacy', 'attachment', 'boundaries', 'selfworth', 'peoplepleasing', 'perfectionism', 'social'] },
+                { label: '压力与处境', ids: ['career', 'existential', 'procrastination', 'trauma', 'bodyimage', 'study', 'money', 'breakup'] }
+            ];
+
+            groups.forEach(({ label, ids }) => {
+                const groupLabel = document.createElement('div');
+                groupLabel.className = 'tag-group-label col-span-2';
+                groupLabel.textContent = label;
+                this.els.tagContainer.appendChild(groupLabel);
+
+                ids.forEach((id) => {
+                    const tag = tags.find(t => t.id === id);
+                    if (!tag) return;
+                    const selected = selectedTagIds.includes(tag.id);
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = [
+                        'tag-btn text-left rounded-xl p-3',
+                        selected ? 'tag-active' : '',
+                        locked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                    ].join(' ').trim();
+                    button.innerHTML = `
+                        <div class="text-sm font-semibold text-white/90">${tag.label}</div>
+                        <div class="mt-1 text-xs leading-5 text-white/45">${tag.desc}</div>
+                    `;
+                    if (!locked) button.onclick = () => this.handlers.onToggleTag?.(tag.id);
+                    this.els.tagContainer.appendChild(button);
+                });
             });
 
             this.updateSelectionSummary(selectedTagIds);
@@ -229,32 +373,34 @@
         },
 
         updateSelectionSummary(selectedTagIds) {
+            if (!this.els.tagCounter || !this.els.tagPreview) return;
             const selectedLabels = tags
                 .filter((tag) => selectedTagIds.includes(tag.id))
                 .map((tag) => tag.label);
 
             this.els.tagCounter.textContent = `已选 ${selectedTagIds.length}/${limits.maxTags}`;
             this.els.tagPreview.textContent = selectedLabels.length
-                ? `当前定制方向：${selectedLabels.join(' / ')}`
-                : '建议至少选择 3 个关键词，让建档评估更贴近你的真实处境。';
+                ? `当前谈话焦点：${selectedLabels.join(' / ')}`
+                : `至少选择 ${limits.minTags} 个焦点，再继续到功能选择。`;
         },
 
         setStartButtonState(selectedCount, phase) {
+            if (!this.els.btnStartAssess) return;
             const idle = phase === 'idle';
             const enabled = idle && selectedCount >= limits.minTags;
             this.els.btnStartAssess.disabled = !enabled;
             this.els.btnStartAssess.className = enabled
-                ? 'w-full bg-amber-500 text-slate-900 py-3 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] shadow-lg shadow-amber-500/20 mt-auto'
-                : 'w-full bg-white/5 border border-white/10 text-white/30 py-3 rounded-xl text-xs font-bold transition-all cursor-not-allowed mt-auto';
+                ? 'solid-button px-5 py-3 text-sm font-semibold'
+                : 'solid-button px-5 py-3 text-sm font-semibold opacity-45 cursor-not-allowed';
 
             if (!idle) {
-                this.els.btnStartAssess.textContent = phase === 'intake' ? '建档评估进行中' : '已进入持续陪伴';
+                this.els.btnStartAssess.textContent = phase === 'intake' ? '建档进行中' : '已进入聊天';
                 return;
             }
 
             this.els.btnStartAssess.textContent = selectedCount >= limits.minTags
-                ? `开始初评建档 (${selectedCount}/${limits.maxTags})`
-                : '请选择 1 到 5 个关键词';
+                ? '进入聊天'
+                : `请先选择 ${limits.minTags} 个焦点`;
         },
 
         clearMessages() {
@@ -269,24 +415,19 @@
         appendMessage({ text, role, isSystem = false, sources = [], meta = null }) {
             const normalizedRole = normalizeRole(role);
             const wrap = document.createElement('div');
-            wrap.className = `flex ${isSystem ? 'justify-center' : (normalizedRole === 'user' ? 'justify-end' : 'justify-start')} msg-anim`;
+            wrap.className = `msg-row ${isSystem ? 'system' : (normalizedRole === 'user' ? 'user' : 'doctor')}`;
 
             if (isSystem) {
                 const line = document.createElement('div');
-                line.className = 'text-[10px] text-white/30 tracking-widest uppercase my-4';
-                line.textContent = `--- ${text} ---`;
+                line.className = 'msg-bubble system';
+                line.textContent = text;
                 wrap.appendChild(line);
             } else {
                 const column = document.createElement('div');
                 column.className = 'max-w-[88%] space-y-3';
 
                 const bubble = document.createElement('div');
-                bubble.className = [
-                    'p-4 rounded-2xl text-[13px] leading-relaxed shadow-xl whitespace-pre-wrap',
-                    normalizedRole === 'user'
-                        ? 'bg-white/10 border border-white/20 text-white rounded-tr-none'
-                        : 'bg-black/40 border border-amber-500/20 text-white/90 rounded-tl-none'
-                ].join(' ');
+                bubble.className = `msg-bubble ${normalizedRole === 'user' ? 'user' : 'doctor'}`;
                 bubble.textContent = text;
                 const assistantMeta = normalizedRole === 'assistant' ? this.buildAssistantMetaBlock(meta) : null;
                 if (assistantMeta) column.appendChild(assistantMeta);
@@ -307,13 +448,13 @@
 
         beginAssistantStream() {
             const wrap = document.createElement('div');
-            wrap.className = 'flex justify-start msg-anim';
+            wrap.className = 'msg-row doctor';
 
             const column = document.createElement('div');
             column.className = 'max-w-[88%] space-y-3';
 
             const bubble = document.createElement('div');
-            bubble.className = 'p-4 rounded-2xl rounded-tl-none text-[13px] leading-relaxed shadow-xl whitespace-pre-wrap bg-black/40 border border-amber-500/20 text-white/90';
+            bubble.className = 'msg-bubble doctor';
             bubble.textContent = '...';
 
             column.appendChild(bubble);
@@ -359,14 +500,14 @@
 
             const primary = document.createElement('span');
             primary.className = meta.failed
-                ? 'inline-flex items-center rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-1 text-[10px] tracking-[0.18em] uppercase text-red-100/85'
-                : 'inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] tracking-[0.18em] uppercase text-white/55';
+                ? 'inline-flex items-center rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-1 text-xs text-red-100/85'
+                : 'inline-flex items-center rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs text-white/55';
             primary.textContent = `${formatModelRole(meta.role)} · ${meta.stageLabel || '回复'}`;
             block.appendChild(primary);
 
             if (meta.model) {
                 const model = document.createElement('span');
-                model.className = 'text-[10px] text-white/35';
+                model.className = 'text-xs text-white/35';
                 model.textContent = meta.model;
                 block.appendChild(model);
             }
@@ -381,23 +522,23 @@
             container.className = 'space-y-2';
 
             const heading = document.createElement('div');
-            heading.className = 'px-1 text-[10px] tracking-[0.25em] uppercase text-amber-200/70';
+            heading.className = 'px-1 text-xs text-amber-100/70';
             heading.textContent = '知识库引用';
             container.appendChild(heading);
 
             sources.forEach((source, index) => {
                 const card = document.createElement('div');
-                card.className = 'rounded-2xl border border-amber-500/15 bg-amber-500/5 px-3 py-3';
+                card.className = 'rounded-2xl border border-amber-200/15 bg-amber-200/[0.06] px-3 py-3';
 
                 const top = document.createElement('div');
                 top.className = 'flex items-start justify-between gap-3';
 
                 const title = document.createElement('div');
-                title.className = 'text-[11px] font-bold text-amber-100/90';
+                title.className = 'text-xs font-semibold text-amber-100/90';
                 title.textContent = source.title || `引用 ${index + 1}`;
 
                 const meta = document.createElement('div');
-                meta.className = 'text-[10px] text-white/45 text-right shrink-0';
+                meta.className = 'shrink-0 text-right text-xs text-white/45';
                 meta.textContent = [formatPageLabel(source), formatScoreLabel(source.score)].filter(Boolean).join(' · ');
 
                 top.appendChild(title);
@@ -405,7 +546,7 @@
                 card.appendChild(top);
 
                 const preview = document.createElement('div');
-                preview.className = 'mt-2 text-[11px] leading-5 text-white/65';
+                preview.className = 'mt-2 text-xs leading-5 text-white/65';
                 preview.textContent = source.textPreview || source.text_preview || '';
                 card.appendChild(preview);
 
@@ -418,13 +559,12 @@
         addTyping() {
             this.removeTyping();
             const wrap = document.createElement('div');
-            wrap.className = 'flex justify-start msg-anim';
+            wrap.className = 'msg-row doctor';
             wrap.dataset.typing = 'true';
-            wrap.innerHTML = `
-                <div class="p-4 rounded-2xl rounded-tl-none bg-black/40 border border-white/5">
-                    <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
-                </div>
-            `;
+            const bubble = document.createElement('div');
+            bubble.className = 'msg-bubble doctor';
+            bubble.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+            wrap.appendChild(bubble);
             this.els.chatBox.appendChild(wrap);
             this.scrollChatToBottom();
         },
@@ -437,34 +577,35 @@
         updateStatus(text, type = 'idle') {
             const colors = {
                 idle: 'bg-gray-500 shadow-none',
-                assess: 'bg-amber-500 shadow-[0_0_8px_#F59E0B] animate-pulse',
-                therapy: 'bg-emerald-400 shadow-[0_0_8px_#34d399]',
+                assess: 'bg-amber-300 shadow-[0_0_8px_rgba(241,195,107,0.7)] animate-pulse',
+                therapy: 'bg-emerald-300 shadow-[0_0_8px_rgba(94,224,183,0.7)]',
                 warning: 'bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse'
             };
-            this.els.statusLabel.textContent = text;
-            this.els.statusDot.className = `w-1.5 h-1.5 rounded-full mr-2 ${colors[type] || colors.idle}`;
+            if (this.els.statusLabel) this.els.statusLabel.textContent = text;
+            if (this.els.statusDot) this.els.statusDot.className = `w-1.5 h-1.5 rounded-full mr-2 ${colors[type] || colors.idle}`;
         },
 
-        lockChat(message = '请先在左侧选择你想聚焦的心理关键词') {
+        lockChat(message = '咨询准备中，请稍候。') {
+            if (!this.els.chatOverlay) return;
             this.els.chatOverlay.classList.remove('hidden');
-            this.els.chatOverlay.style.opacity = '1';
-            this.els.overlayText.textContent = message;
+            if (this.els.overlayText) this.els.overlayText.textContent = message;
             this.els.input.disabled = true;
-            this.els.sendBtn.disabled = true;
+            if (this.els.sendBtn) this.els.sendBtn.disabled = true;
         },
 
         unlockChat() {
-            this.els.chatOverlay.style.opacity = '0';
-            setTimeout(() => this.els.chatOverlay.classList.add('hidden'), 250);
+            if (!this.els.chatOverlay) return;
+            this.els.chatOverlay.classList.add('hidden');
             this.els.input.disabled = false;
-            this.els.sendBtn.disabled = false;
+            if (this.els.sendBtn) this.els.sendBtn.disabled = false;
             this.els.input.focus();
         },
 
         showReport(report, reportHistory) {
             this.setArchiveCollapsed(true);
-            this.els.panelKeywords.classList.add('hidden');
-            this.els.panelReport.classList.remove('hidden');
+            if (this.els.panelKeywords) this.els.panelKeywords.classList.add('hidden');
+            this.els.sideIntakePanel?.classList.add('hidden');
+            if (this.els.panelReport) this.els.panelReport.classList.remove('hidden');
 
             requestAnimationFrame(() => {
                 this.els.panelReport.classList.remove('opacity-0');
@@ -476,7 +617,7 @@
                         : '评估模型来源未记录';
                 }
 
-                this.els.riskBadge.className = `px-3 py-1 rounded-full text-[10px] tracking-widest uppercase ${riskClassMap[report.warningLevel] || riskClassMap.low}`;
+                this.els.riskBadge.className = `rounded-full px-3 py-1 text-xs ${riskClassMap[report.warningLevel] || riskClassMap.low}`;
                 this.els.riskBadge.textContent = `风险 ${report.warningLevel || 'low'}`;
 
                 if (Array.isArray(report.crisisSignals) && report.crisisSignals.length) {
@@ -513,10 +654,10 @@
                     row.className = 'track-row';
                     row.innerHTML = `
                         <div class="flex justify-between gap-3">
-                            <div class="text-white/80 text-[11px]">第 ${reportHistory.length - index} 次评估 · ${item.trend || '追踪中'}</div>
-                            <div class="text-white/35 text-[10px]">${formatDateTime(item.createdAt)}</div>
+                            <div class="text-xs text-white/80">第 ${reportHistory.length - index} 次评估 · ${item.trend || '追踪中'}</div>
+                            <div class="shrink-0 text-xs text-white/35">${formatDateTime(item.createdAt)}</div>
                         </div>
-                        <div class="text-[10px] text-white/45 mt-1">${item.summary || item.coreIssue || ''}</div>
+                        <div class="mt-1 text-xs text-white/45">${item.summary || item.coreIssue || ''}</div>
                     `;
                     this.els.reportHistoryList.appendChild(row);
                 });
@@ -524,8 +665,9 @@
         },
 
         hideReport() {
-            this.els.panelReport.classList.add('hidden', 'opacity-0');
-            this.els.panelKeywords.classList.remove('hidden');
+            if (this.els.panelReport) this.els.panelReport.classList.add('hidden', 'opacity-0');
+            if (this.els.panelKeywords) this.els.panelKeywords.classList.remove('hidden');
+            this.els.sideIntakePanel?.classList.remove('hidden');
             if (this.els.reportModel) this.els.reportModel.textContent = '评估模型来源未记录';
         },
 
@@ -542,7 +684,7 @@
 
         renderArchives(archives, activeArchiveId) {
             if (!archives.length) {
-                this.els.archiveList.innerHTML = '<div class="text-[11px] text-white/35 px-1 py-2">还没有存档。</div>';
+                this.els.archiveList.innerHTML = '<div class="px-1 py-2 text-xs text-white/35">还没有存档。</div>';
                 return;
             }
 
@@ -553,15 +695,15 @@
                 item.innerHTML = `
                     <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
-                            <div class="text-[12px] font-bold text-white/85 truncate">${archive.title}</div>
-                            <div class="text-[10px] text-white/35 mt-1">${archive.meta}</div>
+                            <div class="truncate text-xs font-semibold text-white/85">${archive.title}</div>
+                            <div class="mt-1 text-xs text-white/35">${archive.meta}</div>
                         </div>
-                        <div class="text-[10px] text-white/30 shrink-0">${archive.phaseLabel}</div>
+                        <div class="shrink-0 text-xs text-white/30">${archive.phaseLabel}</div>
                     </div>
-                    <div class="text-[10px] text-white/40 mt-2 line-clamp-2">${archive.keywords || ''}</div>
+                    <div class="line-clamp-2 mt-2 text-xs text-white/40">${archive.keywords || ''}</div>
                     <div class="flex gap-2 mt-3">
-                        <button data-action="load" data-id="${archive.id}" class="flex-1 bg-white/8 hover:bg-white/12 text-white/80 text-[11px] py-2 rounded-lg transition-colors">继续</button>
-                        <button data-action="delete" data-id="${archive.id}" class="px-3 bg-red-500/12 hover:bg-red-500/18 text-red-200 text-[11px] py-2 rounded-lg transition-colors">删除</button>
+                        <button data-action="load" data-id="${archive.id}" class="flex-1 rounded-lg border border-white/10 bg-white/[0.07] py-2 text-xs text-white/80 transition-colors hover:bg-white/[0.12]">继续</button>
+                        <button data-action="delete" data-id="${archive.id}" class="rounded-lg border border-red-300/10 bg-red-500/12 px-3 py-2 text-xs text-red-200 transition-colors hover:bg-red-500/18">删除</button>
                     </div>
                 `;
                 this.els.archiveList.appendChild(item);
@@ -577,48 +719,54 @@
         },
 
         writeSettings(settings) {
-            this.els.cfgBase.value = settings.apiBase || '';
-            this.els.cfgKey.value = settings.apiKey || '';
-            this.els.cfgAssess.value = settings.assessModel || '';
-            this.els.cfgTherapy.value = settings.therapyModel || '';
-            this.els.cfgAssessThinking.checked = Boolean(settings.assessEnableThinking);
-            this.els.cfgTherapyThinking.checked = Boolean(settings.therapyEnableThinking);
-            this.els.cfgIntakeTurns.value = settings.intakeTurns || '';
-            this.els.cfgReassessEvery.value = settings.reassessEvery || '';
-            this.els.cfgRagEnabled.checked = Boolean(settings.ragEnabled);
-            this.els.cfgKbId.value = settings.ragKnowledgeBaseId || '';
-            this.els.cfgKbPath.value = settings.ragKnowledgeBasePath || '';
-            this.els.cfgRagTopK.value = settings.ragTopK || '';
-            this.els.cfgRagMinScore.value = settings.ragMinScore ?? '';
+            const s = (el, cb) => { if (el) cb(el); };
+            s(this.els.cfgBase, el => el.value = settings.apiBase || '');
+            s(this.els.cfgKey, el => el.value = settings.apiKey || '');
+            s(this.els.cfgAssess, el => el.value = settings.assessModel || '');
+            s(this.els.cfgTherapy, el => el.value = settings.therapyModel || '');
+            s(this.els.cfgAssessThinking, el => el.checked = Boolean(settings.assessEnableThinking));
+            s(this.els.cfgTherapyThinking, el => el.checked = Boolean(settings.therapyEnableThinking));
+            s(this.els.cfgIntakeTurns, el => el.value = settings.intakeTurns || '');
+            s(this.els.cfgReassessEvery, el => el.value = settings.reassessEvery || '');
+            s(this.els.cfgRagEnabled, el => el.checked = Boolean(settings.ragEnabled));
+            s(this.els.cfgKbId, el => el.value = settings.ragKnowledgeBaseId || '');
+            s(this.els.cfgKbPath, el => el.value = settings.ragKnowledgeBasePath || '');
+            s(this.els.cfgRagTopK, el => el.value = settings.ragTopK || '');
+            s(this.els.cfgRagMinScore, el => el.value = settings.ragMinScore ?? '');
+            this.writeSetupSettings(settings);
         },
 
         readSettings() {
+            const g = (el, fallback) => el ? el.value : fallback;
+            const gc = (el) => el ? el.checked : false;
             return {
-                apiBase: this.els.cfgBase.value.trim(),
-                apiKey: this.els.cfgKey.value.trim(),
-                assessModel: this.els.cfgAssess.value.trim(),
-                therapyModel: this.els.cfgTherapy.value.trim(),
-                assessEnableThinking: this.els.cfgAssessThinking.checked,
-                therapyEnableThinking: this.els.cfgTherapyThinking.checked,
-                intakeTurns: Number(this.els.cfgIntakeTurns.value),
-                reassessEvery: Number(this.els.cfgReassessEvery.value),
-                ragEnabled: this.els.cfgRagEnabled.checked,
-                ragKnowledgeBaseId: this.els.cfgKbId.value.trim(),
-                ragKnowledgeBasePath: this.els.cfgKbPath.value.trim(),
-                ragTopK: Number(this.els.cfgRagTopK.value),
-                ragMinScore: Number(this.els.cfgRagMinScore.value)
+                apiBase: g(this.els.cfgBase, '').trim(),
+                apiKey: g(this.els.cfgKey, '').trim(),
+                assessModel: g(this.els.cfgAssess, '').trim(),
+                therapyModel: g(this.els.cfgTherapy, '').trim(),
+                assessEnableThinking: gc(this.els.cfgAssessThinking),
+                therapyEnableThinking: gc(this.els.cfgTherapyThinking),
+                intakeTurns: Number(g(this.els.cfgIntakeTurns, '')),
+                reassessEvery: Number(g(this.els.cfgReassessEvery, '')),
+                ragEnabled: gc(this.els.cfgRagEnabled),
+                ragKnowledgeBaseId: g(this.els.cfgKbId, '').trim(),
+                ragKnowledgeBasePath: g(this.els.cfgKbPath, '').trim(),
+                ragTopK: Number(g(this.els.cfgRagTopK, '')),
+                ragMinScore: Number(g(this.els.cfgRagMinScore, ''))
             };
         },
 
         updateRagStatus(text, tone = 'muted') {
-            if (!this.els.cfgRagStatus) return;
             const toneClass = {
                 muted: 'text-white/35',
                 ready: 'text-emerald-300/80',
                 error: 'text-red-300/85'
             };
-            this.els.cfgRagStatus.className = `text-[10px] mt-2 ${toneClass[tone] || toneClass.muted}`;
-            this.els.cfgRagStatus.textContent = text;
+            if (this.els.cfgRagStatus) {
+                this.els.cfgRagStatus.className = `text-xs ${toneClass[tone] || toneClass.muted}`;
+                this.els.cfgRagStatus.textContent = text;
+            }
+            this.setSetupStatus(text, tone === 'ready' ? 'ready' : (tone === 'error' ? 'error' : 'muted'));
         },
 
         scrollChatToBottom() {
@@ -626,121 +774,81 @@
         },
 
         initCanvasBg() {
-            const canvas = document.getElementById('canvasBg');
-            const ctx = canvas.getContext('2d');
-            let width = 0;
-            let height = 0;
-            let drops = [];
-            let skyline = [];
+            // background canvas removed — green theme only
+        },
 
-            const buildSkyline = () => {
-                width = canvas.width = window.innerWidth;
-                height = canvas.height = window.innerHeight;
-                skyline = [];
-                let x = 0;
+        // ── 侧边面板 ──
+        togglePanel(force) {
+            const panel = document.getElementById('sidePanel');
+            if (!panel) return;
+            if (typeof force === 'boolean') {
+                panel.classList.toggle('open', force);
+            } else {
+                panel.classList.toggle('open');
+            }
+        },
 
-                while (x < width) {
-                    const buildingWidth = 36 + Math.random() * 86;
-                    const buildingHeight = height * 0.12 + Math.random() * height * 0.28;
-                    const windows = [];
-                    const cols = Math.max(2, Math.floor(buildingWidth / 14));
-                    const rows = Math.max(3, Math.floor((buildingHeight - 26) / 16));
+        // ── 音效 ──
+        playVoice() {
+            const v = document.getElementById('voiceEn') || document.getElementById('voiceThink');
+            if (v) { v.currentTime = 0; v.play().catch(() => {}); }
+        },
 
-                    for (let row = 0; row < rows; row += 1) {
-                        for (let col = 0; col < cols; col += 1) {
-                            if (Math.random() > 0.46) {
-                                windows.push({
-                                    x: 8 + col * 12 + Math.random() * 1.5,
-                                    y: 12 + row * 14 + Math.random() * 2,
-                                    w: 3 + Math.random() * 2,
-                                    h: 4 + Math.random() * 4,
-                                    alpha: 0.18 + Math.random() * 0.35
-                                });
-                            }
-                        }
-                    }
+        playRain() {
+            const r = document.getElementById('bgRain');
+            if (r && r.paused) { r.volume = 0.45; r.play().catch(() => {}); }
+        },
 
-                    skyline.push({
-                        x,
-                        w: buildingWidth,
-                        h: buildingHeight,
-                        glow: Math.random() * 0.2 + 0.08,
-                        windows
-                    });
-                    x += buildingWidth - 4;
-                }
+        playMusic() {
+            const m = document.getElementById('bgMusic');
+            if (m && m.paused) { m.volume = 0.1; m.play().catch(() => {}); }
+        },
 
-                drops = Array.from({ length: 150 }, () => ({
-                    x: Math.random() * width,
-                    y: Math.random() * height,
-                    length: Math.random() * 25 + 10,
-                    speed: Math.random() * 15 + 10,
-                    alpha: Math.random() * 0.4 + 0.1
-                }));
-            };
+        toggleMusic() {
+            const m = document.getElementById('bgMusic');
+            if (!m) return;
+            if (m.paused) { m.volume = 0.1; m.play().catch(() => {}); return true; }
+            else { m.pause(); return false; }
+        },
 
-            const draw = () => {
-                const sky = ctx.createLinearGradient(0, 0, 0, height);
-                sky.addColorStop(0, '#060912');
-                sky.addColorStop(0.65, '#09111d');
-                sky.addColorStop(1, '#0a0f17');
-                ctx.fillStyle = sky;
-                ctx.fillRect(0, 0, width, height);
+        toggleRain() {
+            const r = document.getElementById('bgRain');
+            if (!r) return;
+            if (r.paused) { r.volume = 0.45; r.play().catch(() => {}); return true; }
+            else { r.pause(); return false; }
+        },
 
-                const haze = ctx.createRadialGradient(width * 0.78, height * 0.72, 10, width * 0.78, height * 0.72, width * 0.36);
-                haze.addColorStop(0, 'rgba(245, 158, 11, 0.16)');
-                haze.addColorStop(1, 'rgba(245, 158, 11, 0)');
-                ctx.fillStyle = haze;
-                ctx.fillRect(0, 0, width, height);
+        setMusicSrc(src) {
+            const m = document.getElementById('bgMusic');
+            if (!m) return;
+            const wasPlaying = !m.paused;
+            m.src = src;
+            m.load();
+            if (wasPlaying) m.play().catch(() => {});
+        },
 
-                ctx.fillStyle = 'rgba(8, 12, 20, 0.28)';
-                ctx.fillRect(0, 0, width, height);
+        setRainSrc(src) {
+            const r = document.getElementById('bgRain');
+            if (!r) return;
+            const wasPlaying = !r.paused;
+            r.src = src;
+            r.load();
+            if (wasPlaying) r.play().catch(() => {});
+        },
 
-                skyline.forEach((building) => {
-                    const top = height - building.h;
-                    const gradient = ctx.createLinearGradient(0, top, 0, height);
-                    gradient.addColorStop(0, 'rgba(16, 24, 40, 0.92)');
-                    gradient.addColorStop(1, 'rgba(7, 10, 18, 0.98)');
-                    ctx.fillStyle = gradient;
-                    ctx.fillRect(building.x, top, building.w, building.h);
+        setBgImage(src) {
+            const img = document.getElementById('bgImage');
+            if (img) img.src = src;
+        },
 
-                    building.windows.forEach((light) => {
-                        const pulse = light.alpha + Math.sin((Date.now() / 900) + light.x) * 0.04;
-                        ctx.fillStyle = `rgba(255, 213, 128, ${Math.max(0.12, pulse)})`;
-                        ctx.fillRect(building.x + light.x, top + light.y, light.w, light.h);
-                        ctx.fillStyle = `rgba(245, 158, 11, ${building.glow})`;
-                        ctx.fillRect(building.x + light.x - 1, top + light.y - 1, light.w + 2, light.h + 2);
-                    });
-                });
-
-                const groundGlow = ctx.createLinearGradient(0, height * 0.72, 0, height);
-                groundGlow.addColorStop(0, 'rgba(245, 158, 11, 0)');
-                groundGlow.addColorStop(1, 'rgba(245, 158, 11, 0.08)');
-                ctx.fillStyle = groundGlow;
-                ctx.fillRect(0, height * 0.72, width, height * 0.28);
-
-                drops.forEach((drop) => {
-                    ctx.beginPath();
-                    ctx.strokeStyle = `rgba(255, 255, 255, ${drop.alpha})`;
-                    ctx.lineWidth = 1.4;
-                    ctx.moveTo(drop.x, drop.y);
-                    ctx.lineTo(drop.x - drop.speed / 3, drop.y + drop.length);
-                    ctx.stroke();
-
-                    drop.y += drop.speed;
-                    drop.x -= drop.speed / 3;
-                    if (drop.y > height) {
-                        drop.y = -drop.length;
-                        drop.x = Math.random() * width + width * 0.2;
-                    }
-                });
-
-                requestAnimationFrame(draw);
-            };
-
-            buildSkyline();
-            window.addEventListener('resize', buildSkyline);
-            draw();
+        setUserAvatar(src) {
+            const img = document.getElementById('userAvatar');
+            const wrap = document.getElementById('userAvatarWrap');
+            if (img) {
+                img.src = src || '';
+                img.style.display = src ? '' : 'none';
+            }
+            if (wrap) wrap.style.display = src ? 'flex' : 'none';
         }
     };
 
