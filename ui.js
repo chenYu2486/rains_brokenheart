@@ -292,7 +292,7 @@
             if (this.els.warmupMoodOptions) this.setWarmupMood(profile.mood || '');
             if (this.els.warmupConcern) this.els.warmupConcern.value = profile.concern || '';
             if (this.els.warmupBody) this.els.warmupBody.value = profile.body || '';
-            if (this.els.warmupPreference) this.els.warmupPreference.value = profile.preference || '倾听与承接';
+            if (this.els.warmupPreference) this.els.warmupPreference.value = profile.preference || '温柔接住，慢慢澄清';
             if (this.els.warmupHope) this.els.warmupHope.value = profile.hope || '';
         },
 
@@ -301,7 +301,7 @@
                 mood: document.getElementById('warmupMoodVal')?.value || '',
                 concern: this.els.warmupConcern?.value?.trim() || '',
                 body: this.els.warmupBody?.value?.trim() || '',
-                preference: this.els.warmupPreference?.value || '倾听与承接',
+                preference: this.els.warmupPreference?.value || '温柔接住，慢慢澄清',
                 hope: this.els.warmupHope?.value?.trim() || ''
             };
         },
@@ -718,31 +718,7 @@
             });
         },
 
-        setModeUI(mode) {
-            document.querySelectorAll('.cfg-mode-btn').forEach((btn) => {
-                const isActive = btn.dataset.mode === mode;
-                btn.classList.toggle('mode-active', isActive);
-                btn.style.background = isActive ? 'rgba(94,224,183,0.1)' : 'rgba(255,255,255,0.04)';
-                btn.style.color = isActive ? 'var(--sage-strong)' : 'rgba(246,247,241,0.5)';
-                btn.style.borderColor = isActive ? 'rgba(180,210,200,0.12)' : 'rgba(180,210,200,0.08)';
-            });
-            const keyGroup = document.getElementById('cfgApiKeyGroup');
-            if (keyGroup) keyGroup.style.display = mode === 'direct' ? '' : 'none';
-        },
-
-        writeSettings(settings, useMode) {
-            const mode = useMode || settings.useMode || 'proxy';
-            const modeDisplay = document.getElementById('cfgModeDisplay');
-            if (modeDisplay) {
-                if (mode === 'proxy') {
-                    modeDisplay.innerHTML = '<span style="color:var(--sage-strong);">免费试用</span>（通过代理转发，无需 API Key）';
-                } else {
-                    modeDisplay.innerHTML = '<span style="color:var(--amber);">自带 Key</span>（直接调用 DashScope API）';
-                }
-            }
-            this.setModeUI(mode);
-            this.refreshSettingsQuota();
-
+        writeSettings(settings) {
             const s = (el, cb) => { if (el) cb(el); };
             s(this.els.cfgBase, el => el.value = settings.apiBase || '');
             s(this.els.cfgKey, el => el.value = settings.apiKey || '');
@@ -758,17 +734,6 @@
             s(this.els.cfgRagTopK, el => el.value = settings.ragTopK || '');
             s(this.els.cfgRagMinScore, el => el.value = settings.ragMinScore ?? '');
             this.writeSetupSettings(settings);
-        },
-
-        readMode() {
-            const active = document.querySelector('.cfg-mode-btn.mode-active');
-            return active ? active.dataset.mode || 'proxy' : 'proxy';
-        },
-
-        refreshSettingsQuota() {
-            const quotaEl = document.getElementById('cfgQuotaDisplay');
-            if (!quotaEl) return;
-            quotaEl.textContent = '免费试用（通过代理转发）';
         },
 
         readSettings() {
@@ -826,30 +791,30 @@
         // ── 音效 ──
         playVoice() {
             const v = document.getElementById('voiceEn') || document.getElementById('voiceThink');
-            if (v) { v.volume = 0.3; v.currentTime = 0; v.play().catch(() => {}); }
+            if (v) { v.currentTime = 0; v.play().catch(() => {}); }
         },
 
         playRain() {
             const r = document.getElementById('bgRain');
-            if (r && r.paused) { r.volume = 0.65; r.play().catch(() => {}); }
+            if (r && r.paused) { r.volume = 0.45; r.play().catch(() => {}); }
         },
 
         playMusic() {
             const m = document.getElementById('bgMusic');
-            if (m && m.paused) { m.volume = 0.18; m.play().catch(() => {}); }
+            if (m && m.paused) { m.volume = 0.1; m.play().catch(() => {}); }
         },
 
         toggleMusic() {
             const m = document.getElementById('bgMusic');
             if (!m) return;
-            if (m.paused) { m.volume = 0.18; m.play().catch(() => {}); return true; }
+            if (m.paused) { m.volume = 0.1; m.play().catch(() => {}); return true; }
             else { m.pause(); return false; }
         },
 
         toggleRain() {
             const r = document.getElementById('bgRain');
             if (!r) return;
-            if (r.paused) { r.volume = 0.65; r.play().catch(() => {}); return true; }
+            if (r.paused) { r.volume = 0.45; r.play().catch(() => {}); return true; }
             else { r.pause(); return false; }
         },
 

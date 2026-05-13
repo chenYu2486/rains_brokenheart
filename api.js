@@ -34,11 +34,6 @@
         return error instanceof TypeError;
     };
 
-    const requiresStreamingForThinking = (error) => {
-        const message = String(error?.message || '');
-        return /enable_thinking/i.test(message) && /non-streaming/i.test(message);
-    };
-
     const streamRequest = async ({
         apiBase,
         apiKey,
@@ -61,31 +56,17 @@
             };
             if (typeof enableThinking === 'boolean') payload.enable_thinking = enableThinking;
 
-            const headers = { 'Content-Type': 'application/json' };
-            if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
             const response = await fetch(apiBase, {
                 method: 'POST',
-                headers,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
                 body: JSON.stringify(payload),
                 signal: controller.signal
             });
 
             if (!response.ok) throw await makeError(response);
-
-            const contentType = response.headers.get('content-type') || '';
-            if (contentType.includes('application/json') || contentType.includes('+json')) {
-                const fallback = await response.json();
-                if (fallback?.error) {
-                    const message = fallback.error.message || fallback.message || '模型请求失败';
-                    const error = new Error(message);
-                    error.code = fallback.error.code;
-                    error.type = fallback.error.type;
-                    error.retryable = false;
-                    throw error;
-                }
-                return extractText(fallback?.choices?.[0]?.message?.content);
-            }
 
             if (!response.body) {
                 const fallback = await response.json();
@@ -145,17 +126,16 @@
             const payload = {
                 model,
                 messages,
-                temperature,
-                stream: false
+                temperature
             };
             if (typeof enableThinking === 'boolean') payload.enable_thinking = enableThinking;
 
-            const headers = { 'Content-Type': 'application/json' };
-            if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
             const response = await fetch(apiBase, {
                 method: 'POST',
-                headers,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
                 body: JSON.stringify(payload),
                 signal: controller.signal
             });
@@ -163,14 +143,6 @@
             if (!response.ok) throw await makeError(response);
 
             const data = await response.json();
-            if (data?.error) {
-                const message = data.error.message || data.message || '模型请求失败';
-                const error = new Error(message);
-                error.code = data.error.code;
-                error.type = data.error.type;
-                error.retryable = false;
-                throw error;
-            }
             const content = extractText(data?.choices?.[0]?.message?.content);
             if (!content) throw new Error('模型没有返回内容');
             return content;
@@ -190,6 +162,8 @@
             maxRetries = 2,
             enableThinking
         }) {
+            if (!apiKey) throw new Error('请先配置 API Key。');
+
             let lastError;
             for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
                 try {
@@ -204,18 +178,6 @@
                     });
                 } catch (error) {
                     lastError = error;
-                    if (requiresStreamingForThinking(error)) {
-                        return await streamRequest({
-                            apiBase,
-                            apiKey,
-                            model,
-                            messages,
-                            temperature,
-                            timeoutMs,
-                            onChunk: null,
-                            enableThinking
-                        });
-                    }
                     if (!shouldRetry(error, attempt, maxRetries)) break;
                     await wait(700 * (attempt + 1));
                 }
@@ -235,6 +197,8 @@
             onChunk,
             enableThinking
         }) {
+            if (!apiKey) throw new Error('请先配置 API Key。');
+
             let lastError;
             for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
                 try {
@@ -268,34 +232,6 @@
             }
 
             throw lastError || new Error('流式请求失败');
-        },
-
-        async generateTTS({ text, apiKey }) {
-            const url = 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer';
-            const headers = { 'Content-Type': 'application/json' };
-            if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
-            const response = await fetch(url, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    model: 'cosyvoice-v3-flash',
-                    input: { text, voice: 'longyan_v3', format: 'wav', sample_rate: 24000 }
-                })
-            });
-
-            if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(`TTS API error (${response.status}): ${errText}`);
-            }
-
-            const data = await response.json();
-            const audioUrl = data?.output?.audio?.url;
-            if (!audioUrl) throw new Error('TTS did not return audio URL');
-
-            const audioResp = await fetch(audioUrl);
-            const blob = await audioResp.blob();
-            return URL.createObjectURL(blob);
         }
     };
 

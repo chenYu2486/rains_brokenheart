@@ -15,119 +15,6 @@
         return Number.isFinite(parsed) ? parsed : fallback;
     };
 
-
-    const cleanString = (value) => String(value || '').trim();
-
-    function savedApiKey() {
-        return cleanString(State.settings.apiKey);
-    }
-
-    function buildApiParams(params) {
-        if (State.useMode !== 'proxy') {
-            return {
-                ...params,
-                apiBase: cleanString(State.settings.apiBase) || Config.defaults.apiBase,
-                apiKey: savedApiKey()
-            };
-        }
-        return {
-            ...params,
-            apiBase: cleanString(State.settings.proxyBase) || Config.defaults.proxyBase,
-            apiKey: ''
-        };
-    }
-
-    function buildDirectApiParams(params, overrides = {}) {
-        return {
-            ...params,
-            ...overrides,
-            apiBase: cleanString(overrides.apiBase) || Config.defaults.apiBase,
-            apiKey: savedApiKey()
-        };
-    }
-
-    function buildApiAttempts(params) {
-        const attempts = [];
-        const seen = new Set();
-        const fallbackModel = Config.defaults.assessModel || 'qwen-turbo-latest';
-        const key = savedApiKey();
-        const primary = buildApiParams(params);
-
-        const push = (label, apiParams) => {
-            const id = [
-                cleanString(apiParams.apiBase),
-                apiParams.apiKey ? 'key' : 'no-key',
-                cleanString(apiParams.model),
-                String(apiParams.enableThinking)
-            ].join('|');
-            if (seen.has(id)) return;
-            seen.add(id);
-            attempts.push({ label, params: apiParams });
-        };
-
-        push(State.useMode === 'proxy' ? 'proxy' : 'direct', primary);
-
-        if (State.useMode === 'proxy' && key) {
-            push('direct-with-saved-key', buildDirectApiParams(params));
-        }
-
-        if (State.useMode !== 'proxy' && key && cleanString(State.settings.apiBase) !== Config.defaults.apiBase) {
-            push('direct-default-base', buildDirectApiParams(params));
-        }
-
-        if (cleanString(params.model) !== fallbackModel) {
-            const modelFallback = { model: fallbackModel, enableThinking: false };
-            push(`${State.useMode === 'proxy' ? 'proxy' : 'direct'}-public-model`, {
-                ...primary,
-                ...modelFallback
-            });
-            if (key) {
-                push('direct-public-model', buildDirectApiParams(params, modelFallback));
-            }
-        }
-
-        return attempts;
-    }
-
-    function rememberApiRecovery(label, error) {
-        const message = error?.message ? `: ${error.message}` : '';
-        console.warn(`API attempt failed (${label})${message}`);
-    }
-
-    async function apiChatWithFallback(params) {
-        let lastError;
-        for (const attempt of buildApiAttempts(params)) {
-            try {
-                return await Api.chat(attempt.params);
-            } catch (error) {
-                lastError = error;
-                rememberApiRecovery(attempt.label, error);
-            }
-        }
-        throw lastError || new Error('API request failed');
-    }
-
-    async function apiStreamWithFallback(params, onChunk) {
-        let lastError;
-        for (const attempt of buildApiAttempts(params)) {
-            let sawChunk = false;
-            try {
-                return await Api.streamChat({
-                    ...attempt.params,
-                    onChunk: (text, delta) => {
-                        if (text || delta) sawChunk = true;
-                        if (typeof onChunk === 'function') onChunk(text, delta);
-                    }
-                });
-            } catch (error) {
-                lastError = error;
-                rememberApiRecovery(attempt.label, error);
-                if (sawChunk) break;
-            }
-        }
-        throw lastError || new Error('API stream request failed');
-    }
-
     // ═══════════════════════════════════════════════
     //  Canvas 城市夜景 + 雨丝动画
     // ═══════════════════════════════════════════════
@@ -397,14 +284,12 @@
 
     const createSessionState = (settings = Config.defaults) => ({
         phase: 'idle',
-        useMode: settings.useMode || 'proxy',
-        activeConversationId: null,    // Supabase 会话 ID
         onboardingStep: 'warmup',
         warmupProfile: {
             mood: '',
             concern: '',
             body: '',
-            preference: '倾听与承接',
+            preference: '温柔接住，慢慢澄清',
             hope: ''
         },
         selectedFeatureIds: defaultFeatureIds(settings),
@@ -434,8 +319,6 @@
         return {
             apiBase: saved.apiBase || Config.defaults.apiBase,
             apiKey: saved.apiKey || legacyApiKey || '',
-            useMode: saved.useMode || Config.defaults.useMode,
-            proxyBase: saved.proxyBase || Config.defaults.proxyBase,
             assessModel: saved.assessModel || Config.defaults.assessModel,
             therapyModel: saved.therapyModel || Config.defaults.therapyModel,
             assessEnableThinking: typeof saved.assessEnableThinking === 'boolean'
@@ -472,7 +355,7 @@
                 : 12
         };
         persistSettings();
-        UI.writeSettings(State.settings, State.useMode);
+        UI.writeSettings(State.settings);
     }
 
     function getSelectedTags() {
@@ -608,13 +491,13 @@
         }
 
         if (State.phase === 'intake') {
-            UI.updateStatus(customText || `初评建档中`, 'assess');
+            UI.updateStatus(customText || `[${State.settings.assessModel}] 初评建档中`, 'assess');
             return;
         }
 
         const warning = ['high', 'critical'].includes(State.latestReport?.warningLevel);
         UI.updateStatus(
-            customText || '持续陪伴中',
+            customText || `[${State.settings.therapyModel}] 持续陪伴中`,
             warning ? 'warning' : 'therapy'
         );
     }
@@ -624,46 +507,6 @@
         const locked = State.phase === 'idle';
         UI.els.input.disabled = flag || locked;
         UI.els.sendBtn.disabled = flag || locked;
-    }
-
-    /** Show an overlay card prompting user to bring their own API key */
-    function showQuotaUpgradeUI() {
-        const overlay = document.getElementById('chatOverlay');
-        const overlayText = document.getElementById('overlayText');
-        if (!overlay || !overlayText) return;
-
-        overlay.classList.remove('hidden');
-        overlay.innerHTML = `
-            <div class="overlay-card" style="text-align:center;max-width:360px;">
-                <i class="fas fa-cloud-rain" style="font-size:36px;color:rgba(154,199,183,0.3);margin-bottom:16px;display:block;"></i>
-                <h3 style="font-size:18px;color:rgba(246,247,241,0.9);margin:0 0 8px;">今日免费次数已用完</h3>
-                <p style="font-size:14px;color:rgba(246,247,241,0.55);line-height:1.6;margin:0 0 20px;">
-                    你可以换上自己的 API Key 继续和知微聊天。
-                    <br>所有数据只存在你的浏览器里。
-                </p>
-                <div style="display:flex;gap:10px;justify-content:center;">
-                    <button id="btnUpgradeNow" style="padding:10px 20px;border-radius:12px;border:none;background:linear-gradient(135deg,var(--sage-strong),var(--amber));color:#10201d;font-weight:600;cursor:pointer;font-size:13px;">配置我的 Key</button>
-                    <button id="btnUpgradeLater" style="padding:10px 20px;border-radius:12px;border:1px solid rgba(180,210,200,0.15);background:rgba(255,255,255,0.06);color:rgba(246,247,241,0.6);cursor:pointer;font-size:13px;">下次再说</button>
-                </div>
-            </div>
-        `;
-
-        document.getElementById('btnUpgradeNow').onclick = () => {
-            // Switch to direct mode
-            State.useMode = 'direct';
-            State.settings.useMode = 'direct';
-            State.settings.apiBase = Config.defaults.apiBase;
-            persistSettings();
-            UI.writeSettings(State.settings, State.useMode);
-            overlay.classList.add('hidden');
-            document.getElementById('settingsOverlay')?.classList.add('open');
-        };
-
-        document.getElementById('btnUpgradeLater').onclick = () => {
-            overlay.classList.add('hidden');
-            // Reset to idle state so user can restart
-            newChat();
-        };
     }
 
     function addDisplayMessage(text, role, isSystem = false, extra = {}) {
@@ -693,9 +536,8 @@
     }
 
     function ensureApiReady() {
-        if (State.useMode === 'proxy') return true;
         if (State.settings.apiKey) return true;
-        alert('请先配置 API Key。\n点击右上角设置 → 填入你的 DashScope API Key。');
+        alert('请先在引导中配置 API Key。');
         return false;
     }
 
@@ -736,7 +578,6 @@
                 keywords: getSelectedTagLabels().join('、'),
                 state: {
                     phase: State.phase,
-                    useMode: State.useMode,
                     onboardingStep: State.onboardingStep,
                     warmupProfile: clone(State.warmupProfile),
                     selectedFeatureIds: clone(State.selectedFeatureIds),
@@ -862,12 +703,15 @@
         const handle = UI.beginAssistantStream();
 
         try {
-            const fullText = await apiStreamWithFallback({
+            const fullText = await Api.streamChat({
+                apiBase: State.settings.apiBase,
+                apiKey: State.settings.apiKey,
                 model,
                 messages: requestMessages,
                 temperature,
-                enableThinking
-            }, (text) => UI.updateAssistantStream(handle, text));
+                enableThinking,
+                onChunk: (text) => UI.updateAssistantStream(handle, text)
+            });
 
             if (!fullText || !fullText.trim()) throw new Error('模型没有返回内容');
 
@@ -882,14 +726,6 @@
             State.history.push({ role: 'assistant', content: fullText });
             return fullText;
         } catch (error) {
-            // ── 配额用尽处理 ──
-            if (error.message?.includes('免费试用') || error.message?.includes('quota_exhausted')) {
-                UI.finishAssistantStream(handle, '', [], { failed: false });
-                addDisplayMessage('今日免费试用次数已用完。你可以换上自己的 API Key 继续和知微聊天。', 'system', true);
-                showQuotaUpgradeUI();
-                return null;
-            }
-
             const message = visibleAssistantError(error, errorPrefix);
             const meta = createAssistantMeta({
                 model,
@@ -909,7 +745,9 @@
         updateStatusFromState(`[${State.settings.assessModel}] ${reportPhase === 'initial' ? '生成初评画像...' : '更新追踪画像...'}`);
 
         try {
-            const raw = await apiChatWithFallback({
+            const raw = await Api.chat({
+                apiBase: State.settings.apiBase,
+                apiKey: State.settings.apiKey,
                 model: State.settings.assessModel,
                 enableThinking: State.settings.assessEnableThinking,
                 messages: [
@@ -942,10 +780,6 @@
             State.reports.push(report);
             State.therapyTurnsSinceReview = 0;
             UI.showReport(report, State.reports);
-            // 双写：保存报告到 Supabase
-            if (State.activeConversationId && window.AppStorage?.ready) {
-                AppStorage.saveReport(State.activeConversationId, report).catch(() => {});
-            }
             return report;
         } finally {
             UI.removeTyping();
@@ -954,7 +788,6 @@
 
     function rebuildTherapyContext() {
         if (!State.latestReport) return;
-        // 先设 system prompt（不含记忆），异步加载记忆后追加
         setSystemPrompt([
             Config.prompts.buildTherapySystem({
                 tags: getSelectedTagLabels(),
@@ -963,14 +796,6 @@
             }),
             buildOnboardingPromptContext()
         ].filter(Boolean).join('\n\n'));
-        if (!window.AppStorage?.ready) return;
-        AppStorage.loadMemories().then((memories) => {
-            if (!memories?.length) return;
-            const ctx = AppStorage.buildMemoryContext(memories);
-            if (!ctx) return;
-            const sys = State.history[0];
-            if (sys?.role === 'system') sys.content += '\n\n' + ctx;
-        }).catch(() => {});
     }
 
     async function startIntakeFlow() {
@@ -1034,12 +859,6 @@
             addDisplayMessage('检测到较高风险信号，接下来会优先稳定情绪、确认安全，并提醒使用现实中的支持资源。', 'system', true);
         }
 
-        // 首次切到陪伴模式时，让模型先感谢用户信任
-        const sysMsg = State.history[0];
-        if (sysMsg?.role === 'system') {
-            sysMsg.content += '\n\n这是你切换为陪伴模式后的第一次回复。请先为用户的信任表达真诚的感谢，再温柔地开启陪伴对话。';
-        }
-
         await streamAssistantReply({
             model: State.settings.therapyModel,
             enableThinking: State.settings.therapyEnableThinking,
@@ -1079,7 +898,6 @@
         Object.assign(State, createSessionState(State.settings), {
             settings: State.settings,
             phase: loadedPhase,
-            useMode: snapshot.useMode || State.settings.useMode || 'proxy',
             onboardingStep: snapshot.onboardingStep || (loadedPhase === 'idle' ? 'focus' : 'features'),
             warmupProfile: clone(snapshot.warmupProfile || createSessionState(State.settings).warmupProfile),
             selectedFeatureIds: Array.isArray(snapshot.selectedFeatureIds)
@@ -1121,7 +939,7 @@
                 onDeleteArchive: (id) => this.deleteArchive(id)
             });
 
-            UI.writeSettings(State.settings, State.useMode);
+            UI.writeSettings(State.settings);
             UI.writeWarmupProfile(State.warmupProfile);
             UI.renderFeatureSelection(State.selectedFeatureIds);
             syncKeywordUI();
@@ -1140,11 +958,10 @@
 
         completeApiStep() {
             const next = UI.readSetupSettings();
-            const nextApiKey = cleanString(next.apiKey);
             State.settings = {
                 ...State.settings,
-                apiBase: cleanString(next.apiBase) || State.settings.apiBase || Config.defaults.apiBase,
-                apiKey: nextApiKey || savedApiKey(),
+                apiBase: next.apiBase || Config.defaults.apiBase,
+                apiKey: next.apiKey || '',
                 assessModel: next.assessModel || Config.defaults.assessModel,
                 therapyModel: next.therapyModel || Config.defaults.therapyModel,
                 ragEnabled: Boolean(next.ragEnabled)
@@ -1155,7 +972,7 @@
                 : State.selectedFeatureIds.filter((id) => id !== 'knowledge');
 
             persistSettings();
-            UI.writeSettings(State.settings, State.useMode);
+            UI.writeSettings(State.settings);
             UI.renderFeatureSelection(State.selectedFeatureIds);
             UI.setSetupStatus(State.settings.apiKey ? '连接信息已保存。' : '可以继续预览流程，进入聊天前仍需要 API Key。', State.settings.apiKey ? 'ready' : 'warning');
             refreshRagStatus();
@@ -1199,7 +1016,7 @@
                     ragEnabled: State.selectedFeatureIds.includes('knowledge')
                 };
                 persistSettings();
-                UI.writeSettings(State.settings, State.useMode);
+                UI.writeSettings(State.settings);
                 refreshRagStatus();
             }
 
@@ -1229,32 +1046,11 @@
             syncProfileSummary();
         },
 
-        setMode(mode) {
-            if (mode !== 'proxy' && mode !== 'direct') return;
-            State.useMode = mode;
-            State.settings.useMode = mode;
-            if (mode === 'proxy') {
-                State.settings.apiBase = State.settings.proxyBase || Config.defaults.proxyBase;
-            } else {
-                State.settings.apiBase = Config.defaults.apiBase;
-            }
-            persistSettings();
-            UI.writeSettings(State.settings, State.useMode);
-            UI.refreshSettingsQuota();
-            updateStatusFromState();
-        },
-
         saveSettings() {
             const next = UI.readSettings();
-            const mode = State.useMode;
-            const nextApiKey = cleanString(next.apiKey);
             State.settings = {
-                useMode: mode,
-                proxyBase: State.settings.proxyBase || Config.defaults.proxyBase,
-                apiBase: mode === 'proxy'
-                    ? (State.settings.proxyBase || Config.defaults.proxyBase)
-                    : (next.apiBase || Config.defaults.apiBase),
-                apiKey: mode === 'proxy' ? savedApiKey() : nextApiKey,
+                apiBase: next.apiBase || Config.defaults.apiBase,
+                apiKey: next.apiKey || '',
                 assessModel: next.assessModel || Config.defaults.assessModel,
                 therapyModel: next.therapyModel || Config.defaults.therapyModel,
                 assessEnableThinking: Boolean(next.assessEnableThinking),
@@ -1271,23 +1067,10 @@
                 ? Array.from(new Set([...State.selectedFeatureIds, 'knowledge']))
                 : State.selectedFeatureIds.filter((id) => id !== 'knowledge');
             persistSettings();
-            // 双写：同步设置到 Supabase
-            if (window.AppStorage?.ready) {
-                AppStorage.saveSettings({
-                    use_mode: State.settings.useMode,
-                    api_base: State.settings.apiBase,
-                    assess_model: State.settings.assessModel,
-                    therapy_model: State.settings.therapyModel,
-                    rag_enabled: State.settings.ragEnabled,
-                    enable_music: State.settings.enableMusic,
-                    enable_thinking: State.settings.assessEnableThinking || State.settings.therapyEnableThinking,
-                }).catch(() => {});
-            }
-            UI.writeSettings(State.settings, State.useMode);
-            UI.refreshSettingsQuota();
+            UI.writeSettings(State.settings);
             UI.renderFeatureSelection(State.selectedFeatureIds);
             syncProfileSummary();
-            document.getElementById('settingsOverlay').classList.remove('open');
+            UI.toggleModal('settingsModal', false);
             updateStatusFromState();
             refreshRagStatus();
         },
@@ -1460,131 +1243,63 @@
     // ═══════════════════════════════════════════════
 
     const vnSteps = [
-        // ═══ 新用户：欢迎 + 询问姓名（skipSetup=false 时展示） ═══
-        { type: 'say', text: '[voice:你好呀] 欢迎来到避雨檐', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '这里很安静', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '我是林知微', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '叫我知微就好', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '可以请问你的名字吗？', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '我如何称呼你？', cond: (d) => !d.skipSetup },
-        { type: 'input', placeholder: '随便怎么称呼……也可以不填', buttonText: '好了', saveTo: 'userName', cond: (d) => !d.skipSetup },
-        // 填了 → 致谢
-        { type: 'say', text: '谢谢，我记住了', cond: (d) => d.userName && !d.skipSetup },
-        // 没填 → 委婉跳过
-        { type: 'say', text: '[voice:嗯] 没关系', cond: (d) => !d.userName && !d.skipSetup },
-        { type: 'say', text: '那我们先坐一会儿', cond: (d) => !d.userName && !d.skipSetup },
+        // ── 开场问候 ──
+        { type: 'say', text: '晚上好。外面还在下雨呢。' },
+        { type: 'say', text: '我是林知微，这里是「避雨檐」。' },
+        { type: 'say', text: '一个安全、安静、不被打扰的地方。' },
+        { type: 'say', text: '今晚，我会在这里陪着你。' },
+        { type: 'say', text: '我们先不急着开始——先花几分钟，把连接理好。' },
 
-        // ═══ 老用户：简短欢迎（skipSetup=true 时展示，跳过后续建档） ═══
-        { type: 'say', text: '[voice:嗯] 你来啦', cond: (d) => d.skipSetup },
-        { type: 'say', text: '[voice:你好呀] 好久不见', cond: (d) => d.skipSetup },
-
-        // ═══ Phase 2: 选择模式（新用户展示） ═══
-        {
-            type: 'choice',
-            text: '想先试试看，还是带上自己的钥匙来？',
-            cond: (d) => !d.skipSetup,
+        // ── API Key ──
+        { type: 'say', text: '第一步，把电源钥匙——API Key——放好。' },
+        { type: 'say', text: '它只存在你的浏览器里，不会被别人看到。' },
+        { type: 'choice', text: '我已经帮你准备了一个密钥。你想直接用，还是自己换一个？',
             choices: [
-                { label: '先免费试试', action: () => { vnData.mode = 'trial'; } },
-                { label: '我自备 API Key', action: () => { vnData.mode = 'byok'; } }
+                { label: '就用这个', desc: '密钥已就绪', value: 'api_prefill' },
+                { label: '我自己填', desc: '手动输入新密钥', value: 'api_custom' }
             ]
         },
-        { type: 'say', text: '先不用想太远', cond: (d) => d.mode === 'trial' && !d.skipSetup },
-        { type: 'say', text: '我们慢慢聊就好', cond: (d) => d.mode === 'trial' && !d.skipSetup },
-        { type: 'say', text: '哪天够了再换钥匙也行', cond: (d) => d.mode === 'trial' && !d.skipSetup },
+        { type: 'input', text: '请把 API Key 贴在这里。', placeholder: 'sk-...', cond: (d) => d.apiKey === 'custom' },
 
-        // ═══ Phase 2: API Key (BYOK) ═══
-        { type: 'say', text: '[voice:嗯] 需要一把小钥匙', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'say', text: '只存在你的浏览器里', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'input', label: 'API Key', placeholder: '把你的 Key 粘贴在这里，例如 sk-...', buttonText: '放好了', saveTo: 'apiKey', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'user', text: '已填写 API Key', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'say', text: '[voice:嗯] 好，收到了', cond: (d) => d.mode === 'byok' && !d.skipSetup },
+        { type: 'say', text: '好。电源接上了。' },
 
-        // ═══ Phase 2: Base URL (BYOK) ═══
-        { type: 'say', text: '请求送到哪里？', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'say', text: '默认地址已填好', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'input', label: 'Base URL', placeholder: '例如 https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', buttonText: '可以了', saveTo: 'apiBase', defaultValue: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', cond: (d) => d.mode === 'byok' && !d.skipSetup },
+        // ── 接口地址 ──
+        { type: 'say', text: '第二步，请求地址。用默认服务就可以。' },
+        { type: 'choice', text: '用默认还是自定义？',
+            choices: [
+                { label: '用默认', desc: 'DashScope 服务', value: 'base_default' },
+                { label: '自定义', desc: '输入代理地址', value: 'base_custom' }
+            ]
+        },
+        { type: 'input', text: '请填入你的接口地址。', placeholder: 'https://...', cond: (d) => d.baseUrl === 'custom' },
 
-        // ═══ Phase 2: 建档模型 (BYOK) ═══
-        { type: 'say', text: '[voice:嗯] 选一个整理状态的模型', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'say', text: '帮我把你心里的话记下来', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'say', text: '不是诊断，是为了更懂你', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'input', label: '状态整理模型', placeholder: '例如 deepseek-chat', buttonText: '选好了', saveTo: 'assessModel', defaultValue: 'qwen-turbo-latest', cond: (d) => d.mode === 'byok' && !d.skipSetup },
+        // ── 模型选择 ──
+        { type: 'say', text: '第三步，选一个模型来陪你对话。' },
+        { type: 'choice', text: '你倾向哪一种？',
+            choices: [
+                { label: '轻快均衡', desc: 'qwen-turbo-latest，日常陪伴够用', value: 'model_turbo' },
+                { label: '深度细腻', desc: 'qwen3-max-preview，深入梳理更稳', value: 'model_max' }
+            ]
+        },
 
-        // ═══ Phase 2: 陪伴模型 (BYOK) ═══
-        { type: 'say', text: '再选一个陪你聊天的', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'say', text: '大部分时间是它在和你说话', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'input', label: '陪伴对话模型', placeholder: '例如 deepseek-chat', buttonText: '继续', saveTo: 'therapyModel', defaultValue: 'qwen3-8b-9c3af956383a', cond: (d) => d.mode === 'byok' && !d.skipSetup },
+        // ── 陪伴偏好 ──
+        { type: 'say', text: '最后，我想知道——你希望我怎么陪你。' },
+        { type: 'choice', text: '你现在更想要哪一种？',
+            choices: [
+                { label: '温柔一点，慢慢聊', desc: '先被接住，再慢慢理清楚', value: 'style_gentle' },
+                { label: '帮我理清楚问题', desc: '分析一下，给些小步骤', value: 'style_structured' },
+                { label: '少讲道理，多陪我', desc: '不需要建议，就是想被听见', value: 'style_companion' }
+            ]
+        },
 
-        // ═══ Phase 2: 知识库开关 (BYOK) ═══
-        { type: 'say', text: '还有一个小东西', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'say', text: '手边有些心理学资料', cond: (d) => d.mode === 'byok' && !d.skipSetup },
-        { type: 'choice', text: '需要参考它们吗？', cond: (d) => d.mode === 'byok' && !d.skipSetup, choices: [
-            { label: '打开吧', action: () => { vnData.ragEnabled = true; } },
-            { label: '先不用', action: () => { vnData.ragEnabled = false; } }
-        ]},
-
-        // ═══ Phase 2 → 3 过渡 ═══
-        { type: 'say', text: '好了', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '灯都亮起来了', cond: (d) => !d.skipSetup },
-
-        // ═══ Phase 3: 当前感受（仅新用户） ═══
-        { type: 'choice', text: '现在这一刻，你感觉怎么样？', cond: (d) => !d.skipSetup, choices: [
-            { label: '心里有点紧', action: () => { vnData.mood = 'anxious'; } },
-            { label: '没什么感觉', action: () => { vnData.mood = 'depressed'; } },
-            { label: '有点乱乱的', action: () => { vnData.mood = 'confused'; } },
-            { label: '说不上来', action: () => { vnData.mood = 'unsure'; } }
-        ]},
-        { type: 'say', text: '嗯，知道了', cond: (d) => d.mood === 'anxious' && !d.skipSetup },
-        { type: 'say', text: '不急着处理它', cond: (d) => d.mood === 'anxious' && !d.skipSetup },
-        { type: 'say', text: '不想说也没关系', cond: (d) => d.mood === 'depressed' && !d.skipSetup },
-        { type: 'say', text: '我就在这里陪你', cond: (d) => d.mood === 'depressed' && !d.skipSetup },
-        { type: 'say', text: '混乱的时候本来就不容易说清', cond: (d) => d.mood === 'confused' && !d.skipSetup },
-        { type: 'say', text: '说不清也是一种答案', cond: (d) => d.mood === 'unsure' && !d.skipSetup },
-
-        // ═══ Phase 3: 最近困扰（仅新用户） ═══
-        { type: 'say', text: '最近有没有什么事挂在心上？', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '一句话几个词都可以', cond: (d) => !d.skipSetup },
-        { type: 'input', placeholder: '睡不着、压力大、和某人的关系……', buttonText: '我想说说', saveTo: 'concern', cond: (d) => !d.skipSetup },
-
-        // ═══ Phase 3: 身体/生活影响（仅新用户） ═══
-        { type: 'say', text: '谢谢你和我说这些', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '这件事更多影响了你哪里？', cond: (d) => !d.skipSetup },
-        { type: 'choice', text: '', cond: (d) => !d.skipSetup, choices: [
-            { label: '睡眠', action: () => { vnData.body = 'sleep'; } },
-            { label: '食欲', action: () => { vnData.body = 'appetite'; } },
-            { label: '胸口或呼吸', action: () => { vnData.body = 'chest'; } },
-            { label: '头脑停不下来', action: () => { vnData.body = 'mind'; } },
-            { label: '学习或工作', action: () => { vnData.body = 'work'; } },
-            { label: '人际关系', action: () => { vnData.body = 'social'; } },
-            { label: '还说不清', action: () => { vnData.body = 'unsure'; } }
-        ]},
-
-        // ═══ Phase 3: 陪伴方式（仅新用户） ═══
-        { type: 'say', text: '接下来想确认一件事', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '你现在更希望我怎么陪你？', cond: (d) => !d.skipSetup },
-        { type: 'choice', text: '', cond: (d) => !d.skipSetup, choices: [
-            { label: '听我说说话', action: () => { vnData.preference = 'gentle'; } },
-            { label: '给我些建议', action: () => { vnData.preference = 'structured'; } },
-            { label: '安静陪着我', action: () => { vnData.preference = 'accompany'; } },
-            { label: '先让我安心', action: () => { vnData.preference = 'stabilize'; } }
-        ]},
-
-        // ═══ Phase 3: 今日希望（仅新用户） ═══
-        { type: 'say', text: '最后一个小问题', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '今晚结束时，你希望自己比现在好在哪？', cond: (d) => !d.skipSetup },
-        { type: 'input', placeholder: '心里没那么堵、知道该做什么了……', buttonText: '我想好了', saveTo: 'hope', cond: (d) => !d.skipSetup },
-
-        // ═══ 结束（仅新用户） ═══
-        { type: 'say', text: '好，我心里有数了', cond: (d) => !d.skipSetup },
-        { type: 'say', text: '感谢你信任我', cond: (d) => d.userName && !d.skipSetup },
-        { type: 'say', text: '可以闭上眼睛，我们深呼吸一下', cond: (d) => d.userName && !d.skipSetup },
-        { type: 'choice', text: '', cond: (d) => !d.skipSetup, choices: [
-            { label: '准备好了', action: () => {} }
-        ]},
+        // ── 结束 ──
+        { type: 'say', text: '好，我都记住了。' },
+        { type: 'say', text: '谢谢你信任我。' },
+        { type: 'say', text: '闭上眼睛，深呼吸一下——然后我们开始。' },
     ];
 
     let vnIdx = -1;
-    const vnData = {};
+    const vnData = { apiKey: 'prefill', baseUrl: 'default', model: 'turbo', style: 'gentle' };
 
     // ── 打字机效果 ──
     function typeText(el, text, speed, onDone) {
@@ -1608,26 +1323,11 @@
 
     function startVnSequence() {
         vnIdx = -1;
-        const isReturning = !!AppAuth.getUserEmail();
-        const hasSavedKey = !!State.settings.apiKey;
-        Object.assign(vnData, {
-            mode: isReturning ? (hasSavedKey ? 'byok' : 'trial') : 'trial',
-            apiKey: State.settings.apiKey || '',
-            apiBase: State.settings.apiBase || '',
-            assessModel: State.settings.assessModel || '',
-            therapyModel: State.settings.therapyModel || '',
-            ragEnabled: State.settings.ragEnabled !== false,
-            mood: '', concern: '', body: '', preference: 'gentle', hope: '',
-            userName: '',
-            skipSetup: isReturning
-        });
+        Object.assign(vnData, { apiKey: 'prefill', baseUrl: 'default', model: 'turbo', style: 'gentle' });
         const box = document.getElementById('chatBox');
         box.innerHTML = '';
         box.onclick = null;
-        // 清除 finishVnOnboarding 遗留的 inline 透明度样式
-        box.style.opacity = '';
-        box.style.transform = '';
-        box.style.transition = '';
+        // 输入框在 VN 期间禁用
         UI.els.input.disabled = true;
         if (UI.els.sendBtn) UI.els.sendBtn.disabled = true;
         renderVnStep();
@@ -1655,21 +1355,13 @@
             div.className = 'vn-text';
             box.appendChild(div);
 
-            // 剥离 [voice:嗯] 标记，播放对应语气
-            let displayText = step.text;
-            const voiceMatch = displayText.match(/\[voice:([^\]]+?)\]/);
-            if (voiceMatch) {
-                playInterjection(voiceMatch[1]);
-                displayText = displayText.replace(voiceMatch[0], '').trim();
-            }
-
             // 根据字数自动调速，总时长控制在 1~3 秒
-            const len = displayText.length;
-            const t = Math.min(Math.max((len - 5) / 95, 0), 1);
-            const totalMs = 1000 + t * 4000; // 1000ms ~ 5000ms
+            const len = step.text.length;
+            const t = Math.min(Math.max((len - 5) / 95, 0), 1); // 5字→0, 100字→1
+            const totalMs = 1000 + t * 2000; // 1000ms ~ 3000ms
             const speed = len > 0 ? Math.floor(totalMs / len) : 50;
 
-            typeText(div, displayText, speed, () => {
+            typeText(div, step.text, speed, () => {
                 // 打字完毕等一会再自动推进下一句
                 setTimeout(() => renderVnStep(), 1200);
             });
@@ -1689,7 +1381,18 @@
                 el.className = 'vn-choice-item';
                 el.textContent = c.label;
                 el.onclick = () => {
-                    if (c.action) c.action();
+                    const map = {
+                        api_prefill: () => vnData.apiKey = 'prefill',
+                        api_custom: () => vnData.apiKey = 'custom',
+                        base_default: () => vnData.baseUrl = 'default',
+                        base_custom: () => vnData.baseUrl = 'custom',
+                        model_turbo: () => vnData.model = 'turbo',
+                        model_max: () => vnData.model = 'max',
+                        style_gentle: () => vnData.style = 'gentle',
+                        style_structured: () => vnData.style = 'structured',
+                        style_companion: () => vnData.style = 'companion',
+                    };
+                    map[c.value]?.();
                     renderVnStep();
                 };
                 wrap.appendChild(el);
@@ -1704,108 +1407,47 @@
                 div.style.marginBottom = '12px';
                 box.appendChild(div);
             }
-            if (step.label) {
-                const label = document.createElement('div');
-                label.style.cssText = 'font-size:12px;color:rgba(246,247,241,0.4);margin-bottom:4px;';
-                label.textContent = step.label;
-                box.appendChild(label);
-            }
-            const row = document.createElement('div');
-            row.style.cssText = 'display:flex;gap:8px;';
             const input = document.createElement('input');
             input.className = 'vn-input';
-            input.style.flex = '1';
             input.placeholder = step.placeholder || '';
-            if (step.defaultValue) input.value = step.defaultValue;
-            box.appendChild(row);
-            row.appendChild(input);
-            if (step.buttonText) {
-                const btn = document.createElement('button');
-                btn.className = 'vn-choice-item';
-                btn.textContent = step.buttonText;
-                btn.onclick = () => {
-                    const val = input.value.trim() || '';
-                    if (step.saveTo) vnData[step.saveTo] = val;
-                    renderVnStep();
-                };
-                row.appendChild(btn);
-            }
+            box.appendChild(input);
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     const val = input.value.trim() || '';
-                    if (step.saveTo) vnData[step.saveTo] = val;
+                    if (step.placeholder.includes('sk-')) {
+                        State.settings.apiKey = val || State.settings.apiKey;
+                    } else if (step.placeholder.includes('https')) {
+                        State.settings.apiBase = val || Config.defaults.apiBase;
+                    }
                     renderVnStep();
                 }
             });
             setTimeout(() => input.focus(), 200);
-
-        } else if (step.type === 'user') {
-            const div = document.createElement('div');
-            div.style.cssText = 'text-align:right;padding:8px 12px;margin:8px 0;background:rgba(94,224,183,0.08);border-radius:12px;color:#5ee0b7;font-size:14px;';
-            div.textContent = step.text;
-            box.appendChild(div);
-            setTimeout(() => renderVnStep(), 800);
         }
     }
 
     function finishVnOnboarding() {
-        // ── 写入配置 ──
-        const isTrial = vnData.mode === 'trial';
-        State.useMode = isTrial ? 'proxy' : 'direct';
-        State.settings.useMode = State.useMode;
-        if (isTrial) {
-            State.settings.apiKey = savedApiKey();
-            State.settings.apiBase = State.settings.proxyBase || Config.defaults.proxyBase;
-            State.settings.assessModel = Config.defaults.assessModel;
-            State.settings.therapyModel = Config.defaults.therapyModel;
-            State.settings.ragEnabled = true;
+        // ── 应用 VN 选择到设置 ──
+        if (vnData.model === 'max') {
+            State.settings.therapyModel = 'qwen3-max-preview';
         } else {
-            State.settings.apiKey = vnData.apiKey || '';
-            State.settings.apiBase = vnData.apiBase || Config.defaults.apiBase;
-            State.settings.assessModel = vnData.assessModel || Config.defaults.assessModel;
-            State.settings.therapyModel = vnData.therapyModel || Config.defaults.therapyModel;
-            State.settings.ragEnabled = vnData.ragEnabled ?? true;
+            State.settings.therapyModel = 'qwen-turbo-latest';
         }
+        State.settings.assessModel = Config.defaults.assessModel;
 
-        const moodMap = { anxious: '焦虑紧绷', depressed: '低落麻木', confused: '混乱疲惫', unsure: '还说不清' };
-        const bodyMap = { sleep: '睡眠', appetite: '食欲', chest: '胸口或呼吸', mind: '头脑停不下来', work: '学习或工作', social: '人际关系', unsure: '还说不清' };
-        const prefMap = { gentle: '倾听与承接', structured: '梳理与建议', accompany: '安静陪伴', stabilize: '情绪安抚' };
-        State.warmupProfile.mood = moodMap[vnData.mood] || '';
-        State.warmupProfile.concern = vnData.concern || '';
-        State.warmupProfile.body = bodyMap[vnData.body] || '';
-        State.warmupProfile.preference = prefMap[vnData.preference] || '倾听与承接';
-        State.warmupProfile.hope = vnData.hope || '';
+        const styleMap = {
+            gentle: '温柔接住，慢慢澄清',
+            structured: '结构化分析，给出小步骤',
+            companion: '少评价，多陪伴'
+        };
+        State.warmupProfile.preference = styleMap[vnData.style] || '温柔接住，慢慢澄清';
+        const prefEl = document.getElementById('warmupPreference');
+        if (prefEl) prefEl.value = State.warmupProfile.preference;
 
-        // ── 保存姓名 ──
-        if (vnData.userName) {
-            try {
-                const profile = JSON.parse(localStorage.getItem('shelter_profile') || '{}');
-                profile.displayName = vnData.userName;
-                localStorage.setItem('shelter_profile', JSON.stringify(profile));
-            } catch {}
-        }
-        State.selectedFeatureIds = State.settings.ragEnabled
-            ? Array.from(new Set([...State.selectedFeatureIds, 'knowledge']))
-            : State.selectedFeatureIds.filter((id) => id !== 'knowledge');
-
+        // 初始表情为微笑
         document.querySelectorAll('.conv-avatar, #docPhoto').forEach(el => { if (el) el.src = './smile.png'; });
 
         persistSettings();
-
-        // ── 同步到 Supabase 会话 ──
-        if (window.AppStorage?.ready) {
-            AppStorage.saveConversation({
-                id: State.activeConversationId || undefined,
-                title: '',
-                phase: State.phase,
-                tags: State.selectedTagIds,
-                features: State.selectedFeatureIds,
-                warmup_profile: State.warmupProfile,
-            }).then((conv) => {
-                const convData = Array.isArray(conv) ? conv[0] : conv;
-                if (convData?.id) State.activeConversationId = convData.id;
-            }).catch(() => {});
-        }
 
         // ── 自然过渡：VN 淡出 → 对话界面淡入 ──
         const ml = document.querySelector('.main-layout');
@@ -1884,62 +1526,23 @@
         document.querySelectorAll('.conv-avatar, #docPhoto').forEach(el => { if (el) el.src = src; });
     }
 
-    // ── TTS 语气词缓存（longyan_v3 · CosyVoice）──
-    const ttsCache = new Map();
-    const COMMON_INTERJECTIONS = [
-        '嗯', '嗯？', '嗯嗯', '嗯…',
-        '哎', '哎？',
-        '哦', '哦？', '哦哦',
-        '唔', '唔…', '嗯哼',
-        '啊', '呀',
-        '诶', '诶？',
-        '噢',
-        '你好', '好啦', '对', '对呀'
-    ];
-
-    function getCurrentTtsKey() {
-        return State.settings.apiKey || '';
-    }
-
-    async function getTTSAudio(text) {
-        if (ttsCache.has(text)) return ttsCache.get(text);
+    function playAiVoice() {
         try {
-            const blobUrl = await Api.generateTTS({ text, apiKey: getCurrentTtsKey() });
-            ttsCache.set(text, blobUrl);
-            return blobUrl;
-        } catch (err) {
-            console.error('TTS gen failed:', err);
-            return null;
-        }
-    }
-
-    function playInterjection(text) {
-        const url = ttsCache.get(text);
-        if (!url) return;
-        try {
-            const audio = new Audio(url);
-            audio.volume = 0.8;
-            audio.play().catch(() => {});
+            const audio = document.getElementById('voiceEn') || document.getElementById('voiceThink');
+            if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
         } catch (_) {}
     }
 
-    function preloadInterjections() {
-        COMMON_INTERJECTIONS.forEach((text, i) => {
-            setTimeout(() => getTTSAudio(text).catch(() => {}), i * 2000);
-        });
-    }
-
     async function postVnChatRequest(messages, options = {}) {
-        const { model, temperature, enableThinking, userQuery } = options;
+        const { model, temperature, userQuery } = options;
         const { messages: requestMessages } = await buildRagAugmentedMessages({ messages, userQuery });
-        let fullText = '';
-        const text = await apiStreamWithFallback({
+        return await Api.chat({
+            apiBase: State.settings.apiBase,
+            apiKey: State.settings.apiKey,
             model,
             messages: requestMessages,
-            temperature: temperature ?? 0.7,
-            enableThinking
-        }, (full, _delta) => { fullText = full; });
-        return text || fullText;
+            temperature: temperature ?? 0.7
+        });
     }
 
     function displayAiLines(fullText) {
@@ -1952,15 +1555,20 @@
         if (expMatch) {
             setExpression(expMatch[1]);
             text = text.replace(expMatch[0], '').trim();
+            // happy 表情自动触发开心的音效
+            if (expMatch[1] === 'happy') {
+                try {
+                    const h = document.getElementById('voiceHappy');
+                    if (h) { h.currentTime = 0; h.play().catch(() => {}); }
+                } catch (_) {}
+            }
         }
 
-        // 解析语气词指令 [voice:嗯] [voice:好啦] ...
-        let voiceProcessed = text;
-        voiceProcessed = voiceProcessed.replace(/\[voice:([^\]]+?)\]/g, (match, word) => {
-            playInterjection(word);
-            return '';
-        });
-        text = voiceProcessed.trim();
+        // 解析发声指令
+        if (/\[voice\]/i.test(text)) {
+            playAiVoice();
+            text = text.replace(/\[voice\]/gi, '').trim();
+        }
 
         // 分割为短句
         lineQueue = text
@@ -1992,14 +1600,8 @@
         const speed = len > 0 ? Math.floor(totalMs / len) : 50;
 
         typeText(el, line, speed, () => {
-            scrollConvToBottom();
             setTimeout(() => showNextAiLine(), 800);
         });
-    }
-
-    function scrollConvToBottom() {
-        const body = document.getElementById('convBody');
-        if (body) body.scrollTop = body.scrollHeight;
     }
 
     function displayUserLine(text) {
@@ -2040,7 +1642,6 @@
         const btn = document.getElementById('convSendBtn');
         if (input) input.disabled = false;
         if (btn) btn.disabled = false;
-        scrollConvToBottom();
         if (input) setTimeout(() => input.focus(), 100);
     }
 
@@ -2048,12 +1649,6 @@
         const input = document.getElementById('convInput');
         const text = pendingText || input.value.trim();
         if (!text || isShowingLines) return;
-        const previousPhase = State.phase;
-        const previousIntakeTurns = State.intakeTurnsCompleted;
-        const previousTherapyTurns = State.therapyTurnsSinceReview;
-        const previousTotalUserTurns = State.totalUserTurns;
-        const historyLengthBeforeUser = State.history.length;
-        const displayLengthBeforeUser = State.displayMessages.length;
 
         input.value = '';
         input.disabled = true;
@@ -2074,175 +1669,60 @@
                     const reply = await postVnChatRequest(State.history, {
                         model: State.settings.assessModel,
                         temperature: Config.defaults.assessTemperature,
-                        enableThinking: State.settings.assessEnableThinking,
                         userQuery: text
                     });
                     State.displayMessages.push({ text: reply, role: 'assistant', isSystem: false, meta: { role: 'assessment' } });
                     State.history.push({ role: 'assistant', content: reply });
                     displayAiLines(reply);
-                    // 双写：保存消息到 Supabase
-                    if (State.activeConversationId && window.AppStorage?.ready) {
-                        AppStorage.appendMessage(State.activeConversationId, { role: 'user', content: text }).catch(() => {});
-                        AppStorage.appendMessage(State.activeConversationId, { role: 'assistant', content: reply, meta: { role: 'assessment' } }).catch(() => {});
-                    }
-                    extractMemoriesIfNeeded().catch(() => {});
                 }
             } else if (State.phase === 'therapy') {
                 State.therapyTurnsSinceReview += 1;
                 const reply = await postVnChatRequest(State.history, {
                     model: State.settings.therapyModel,
                     temperature: Config.defaults.therapyTemperature,
-                    enableThinking: State.settings.therapyEnableThinking,
                     userQuery: text
                 });
                 State.displayMessages.push({ text: reply, role: 'assistant', isSystem: false, meta: { role: 'therapy' } });
                 State.history.push({ role: 'assistant', content: reply });
                 displayAiLines(reply);
-                // 双写：保存消息到 Supabase
-                if (State.activeConversationId && window.AppStorage?.ready) {
-                    AppStorage.appendMessage(State.activeConversationId, { role: 'user', content: text }).catch(() => {});
-                    AppStorage.appendMessage(State.activeConversationId, { role: 'assistant', content: reply, meta: { role: 'therapy' } }).catch(() => {});
-                }
-                // 定期提取长期记忆
-                extractMemoriesIfNeeded().catch(() => {});
             }
         } catch (error) {
             console.error(error);
-            if (error.message?.includes('免费试用') || error.message?.includes('quota_exhausted')) {
-                addDisplayMessage('今日免费试用次数已用完。你可以换上自己的 API Key 继续。', 'system', true);
-                showQuotaUpgradeUI();
-                return;
-            }
-            try {
-                const retryModel = State.phase === 'intake' ? State.settings.assessModel : State.settings.therapyModel;
-                const retryTemperature = State.phase === 'intake'
-                    ? Config.defaults.assessTemperature
-                    : Config.defaults.therapyTemperature;
-                const retryReply = await apiChatWithFallback({
-                    model: retryModel,
-                    messages: State.history,
-                    temperature: retryTemperature,
-                    enableThinking: false
-                });
-                if (retryReply) {
-                    const retryRole = State.phase === 'intake' ? 'assessment' : 'therapy';
-                    State.displayMessages.push({ text: retryReply, role: 'assistant', isSystem: false, meta: { role: retryRole, stage: `${retryRole}-retry` } });
-                    State.history.push({ role: 'assistant', content: retryReply });
-                    displayAiLines(retryReply);
-                    return;
-                }
-            } catch (retryError) {
-                console.error(retryError);
-            }
-            if (State.phase === previousPhase) {
-                State.phase = previousPhase;
-                State.intakeTurnsCompleted = previousIntakeTurns;
-                State.therapyTurnsSinceReview = previousTherapyTurns;
-                State.totalUserTurns = previousTotalUserTurns;
-                State.history = State.history.slice(0, historyLengthBeforeUser);
-                State.displayMessages = State.displayMessages.slice(0, displayLengthBeforeUser);
-            }
             displayAiLines('[smile] 嗯，好像走神了一下……能再说一次吗？');
         }
     }
 
     async function finishPostVnAssessment() {
-        try {
-            const report = await generateAssessment('initial');
-            State.phase = 'therapy';
-            rebuildTherapyContext();
+        const report = await generateAssessment('initial');
+        State.phase = 'therapy';
+        rebuildTherapyContext();
 
-            if (['high', 'critical'].includes(report.warningLevel)) {
-                addDisplayMessage('检测到较高风险信号，接下来会优先稳定情绪、确认安全，并提醒使用现实中的支持资源。', 'system', true);
-            }
-
-            const therapyReply = await postVnChatRequest(State.history, {
-                model: State.settings.therapyModel,
-                temperature: Config.defaults.therapyTemperature,
-                enableThinking: State.settings.therapyEnableThinking
-            });
-            State.displayMessages.push({ text: therapyReply, role: 'assistant', isSystem: false, meta: { role: 'therapy', stage: 'therapy-handoff' } });
-            State.history.push({ role: 'assistant', content: therapyReply });
-            displayAiLines(therapyReply);
-        } catch (error) {
-            console.error(error);
-            if (error.message?.includes('免费试用') || error.message?.includes('quota_exhausted')) {
-                addDisplayMessage('今日免费试用次数已用完。你可以换上自己的 API Key 继续。', 'system', true);
-                showQuotaUpgradeUI();
-                return;
-            }
-            displayAiLines('[smile] 没事，慢慢来。你还想继续聊一会儿吗？');
-        }
-    }
-
-    // ── 每 N 轮提取长期记忆（从 therapy 对话中） ──
-    const MEMORY_EXTRACT_INTERVAL = 8; // 每 8 轮提取一次
-
-    async function extractMemoriesIfNeeded() {
-        if (State.phase !== 'therapy') return;
-        if (State.therapyTurnsSinceReview % MEMORY_EXTRACT_INTERVAL !== 0) return;
-        if (!window.AppStorage?.ready) return;
-        // 已有记忆的类型，避免重复提取相同内容
-        const recentMessages = State.history.slice(-6).map((m) => `${m.role}: ${m.content?.slice(0, 200)}`).join('\n');
-        if (!recentMessages.trim()) return;
-
-        try {
-            const raw = await apiChatWithFallback({
-                model: State.settings.assessModel,
-                messages: [
-                    { role: 'system', content: '你是一个记忆提取器。从最近的对话中提取可复用的用户洞察。只输出 JSON，不要解释。' },
-                    { role: 'user', content: [
-                        '分析以下最近的对话片段，提取你对这个用户的新了解。',
-                        '只提取有把握的、可复用的观察（偏好、困扰、背景、风险信号、支持资源、禁忌表达）。',
-                        '如果没什么新发现，返回空数组。',
-                        '',
-                        recentMessages,
-                        '',
-                        '输出 JSON 格式：{"new_memories":[{"type":"preference|concern|background|risk|resource|taboo","content":"...","confidence":0.0-1.0}]}'
-                    ].join('\n') }
-                ],
-                temperature: 0.3,
-                enableThinking: false
-            });
-
-            const parsed = JSON.parse(raw);
-            if (parsed?.new_memories?.length) {
-                await AppStorage.saveMemories(parsed.new_memories.map((m) => ({
-                    ...m,
-                    source: 'auto-extract',
-                })));
-            }
-        } catch {}
+        const therapyReply = await postVnChatRequest(State.history, {
+            model: State.settings.therapyModel,
+            temperature: Config.defaults.therapyTemperature
+        });
+        State.displayMessages.push({ text: therapyReply, role: 'assistant', isSystem: false, meta: { role: 'therapy', stage: 'therapy-handoff' } });
+        State.history.push({ role: 'assistant', content: therapyReply });
+        displayAiLines(therapyReply);
     }
 
     async function startPostVnFlow() {
         State.phase = 'intake';
-        const onboardingContext = buildOnboardingPromptContext();
         State.history = [{
             role: 'system',
-            content: [
-                Config.prompts.buildAssessSystem({
-                    tags: getSelectedTagLabels(),
-                    intakeTurns: State.settings.intakeTurns
-                }),
-                onboardingContext
-            ].filter(Boolean).join('\n\n')
+            content: Config.prompts.buildAssessSystem({
+                tags: getSelectedTagLabels(),
+                intakeTurns: State.settings.intakeTurns
+            })
         }];
 
         try {
             const kickoffText = await postVnChatRequest([
                 ...State.history,
-                {
-                    role: 'user',
-                    content: [
-                        Config.prompts.buildKickoffPrompt({ tags: getSelectedTagLabels() }),
-                        onboardingContext ? '请结合前置引导信息，先问一个最自然、最温和的问题。' : ''
-                    ].filter(Boolean).join('\n\n')
-                }
+                { role: 'user', content: Config.prompts.buildKickoffPrompt({ tags: getSelectedTagLabels() }) }
             ], {
                 model: State.settings.assessModel,
-                temperature: Config.defaults.assessTemperature,
-                enableThinking: State.settings.assessEnableThinking
+                temperature: Config.defaults.assessTemperature
             });
 
             State.displayMessages.push({ text: kickoffText, role: 'assistant', isSystem: false, meta: { role: 'assessment', stage: 'intake-kickoff' } });
@@ -2252,18 +1732,19 @@
             displayAiLines(kickoffText);
         } catch (error) {
             console.error(error);
-            if (error.message?.includes('免费试用') || error.message?.includes('quota_exhausted')) {
-                addDisplayMessage('今日免费试用次数已用完。你可以换上自己的 API Key 继续。', 'system', true);
-                showQuotaUpgradeUI();
-                return;
-            }
-            displayAiLines('[smile] 晚上好。今晚我会在这里陪着你。想从哪里开始聊呢？');
+            displayAiLines('[smile] 晚上好。外面还在下雨呢。今晚我会在这里陪着你。想从哪里开始聊呢？');
         }
     }
 
     window.addEventListener('DOMContentLoaded', () => {
         const docPhoto = document.getElementById('docPhoto');
         const docName = document.getElementById('docName');
+
+        // ── 预填 API Key ──
+        if (!State.settings.apiKey) {
+            State.settings.apiKey = 'sk-76456a9801c14ee9901727f080c635f9';
+            persistSettings();
+        }
 
         // ── 用户点击闪屏后才会播放音乐（见 splash.onclick） ──
 
@@ -2283,118 +1764,13 @@
             persistSettings();
         };
 
-        // ── 播放列表切换 ──
-        const MUSIC_PLAYLIST = [
-            { file: './826622__xkeril__memories-of-a-sweet-summer-music-loop.wav', name: '夏日回忆' },
-            { file: './music_soft_piano.mp3', name: '轻钢琴曲' },
-        ];
-        let _musicTrackIdx = 0;
-        const _trackDisplay = document.getElementById('musicTrackDisplay');
-
-        function updateTrackDisplay() {
-            if (_trackDisplay) _trackDisplay.textContent = MUSIC_PLAYLIST[_musicTrackIdx].name;
-        }
-
-        function switchMusicTrack(direction) {
-            _musicTrackIdx = (_musicTrackIdx + direction + MUSIC_PLAYLIST.length) % MUSIC_PLAYLIST.length;
-            const m = document.getElementById('bgMusic');
-            if (!m) return;
-            const wasPlaying = !m.paused;
-            m.src = MUSIC_PLAYLIST[_musicTrackIdx].file;
-            m.load();
-            if (wasPlaying) m.play().catch(() => {});
-            updateTrackDisplay();
-        }
-
-        // 点击曲名切换到下一首
-        if (_trackDisplay) {
-            _trackDisplay.onclick = () => switchMusicTrack(1);
-        }
-
-        // 初始化曲名显示
-        updateTrackDisplay();
-
-        // ── splash 点击时设置初始曲目 ──
-        // 在 startApp 的 splash.onclick 中调用
-
         // ── 设置弹窗 ──
         const settingsOverlay = document.getElementById('settingsOverlay');
-        document.getElementById('btnSettings').onclick = () => {
-            UI.refreshSettingsQuota();
-            settingsOverlay.classList.add('open');
-        };
+        document.getElementById('btnSettings').onclick = () => settingsOverlay.classList.add('open');
         document.getElementById('btnSettingsClose').onclick = () => settingsOverlay.classList.remove('open');
-        document.getElementById('btnSaveSettings').onclick = () => App.saveSettings();
         settingsOverlay.addEventListener('click', (e) => {
             if (e.target === settingsOverlay) settingsOverlay.classList.remove('open');
         });
-
-        // ── 存档列表弹窗 ──
-        const archivesOverlay = document.getElementById('archivesOverlay');
-
-        function renderArchivesOverlay() {
-            const list = document.getElementById('archivesList');
-            const archives = Archive.getAll();
-            if (!archives.length) {
-                list.innerHTML = '<div class="archives-empty">还没有存档。完成对话后点击「暂存」来保存。</div>';
-                return;
-            }
-            list.innerHTML = '';
-            archives.forEach((a) => {
-                const card = document.createElement('div');
-                card.className = 'archives-card' + (State.activeArchiveId === a.id ? ' archives-card-active' : '');
-                card.innerHTML = `
-                    <div class="archives-card-title">${a.title || '未命名对话'}</div>
-                    <div class="archives-card-meta">
-                        <span>${a.meta || ''}</span>
-                        <span>${a.phaseLabel || ''}</span>
-                    </div>
-                    <div class="archives-card-actions">
-                        <button class="archives-btn-load" data-action="load" data-id="${a.id}">继续</button>
-                        <button class="archives-btn-del" data-action="delete" data-id="${a.id}">删除</button>
-                    </div>
-                `;
-                card.querySelector('[data-action="load"]').onclick = (e) => {
-                    e.stopPropagation();
-                    archivesOverlay.classList.remove('open');
-                    App.loadArchive(a.id);
-                };
-                card.querySelector('[data-action="delete"]').onclick = (e) => {
-                    e.stopPropagation();
-                    Archive.remove(a.id);
-                    renderArchivesOverlay();
-                    UI.renderArchives(Archive.getAll(), State.activeArchiveId);
-                };
-                list.appendChild(card);
-            });
-        }
-
-        document.getElementById('btnArchives').onclick = () => {
-            renderArchivesOverlay();
-            archivesOverlay.classList.add('open');
-        };
-        document.getElementById('btnArchivesClose').onclick = () => {
-            archivesOverlay.classList.remove('open');
-        };
-        archivesOverlay.addEventListener('click', (e) => {
-            if (e.target === archivesOverlay) archivesOverlay.classList.remove('open');
-        });
-
-        // ── 模式切换 ──
-        document.getElementById('cfgModeTrial')?.addEventListener('click', () => App.setMode('proxy'));
-        document.getElementById('cfgModeDirect')?.addEventListener('click', () => App.setMode('direct'));
-
-        // ── RAG 开关联动 ──
-        const cfgRagEnabled = document.getElementById('cfgRagEnabled');
-        const cfgRagFields = document.getElementById('cfgRagFields');
-        if (cfgRagEnabled && cfgRagFields) {
-            const toggleRag = () => {
-                cfgRagFields.style.opacity = cfgRagEnabled.checked ? '1' : '0.35';
-                cfgRagFields.querySelectorAll('input').forEach(el => el.disabled = !cfgRagEnabled.checked);
-            };
-            cfgRagEnabled.addEventListener('change', toggleRag);
-            toggleRag();
-        }
 
         // ── 自定义音乐 ──
         document.getElementById('settingsMusicUrl').addEventListener('change', (e) => {
@@ -2436,360 +1812,37 @@
             if (file) UI.setUserAvatar(URL.createObjectURL(file));
         });
 
-        // ── 个人信息弹窗 ──
-        const PROFILE_KEY = 'shelter_profile';
-
-        function loadProfile() {
-            try {
-                const raw = localStorage.getItem(PROFILE_KEY);
-                return raw ? JSON.parse(raw) : { displayName: '', bio: '' };
-            } catch { return { displayName: '', bio: '' }; }
-        }
-
-        function saveProfileToDisk(data) {
-            localStorage.setItem(PROFILE_KEY, JSON.stringify(data));
-        }
-
-        function openProfile() {
-            const overlay = document.getElementById('profileOverlay');
-            if (!overlay) return;
-            const data = loadProfile();
-            document.getElementById('profileEmail').textContent = AppAuth.getUserEmail() || '--';
-            document.getElementById('profileDisplayName').value = data.displayName || '';
-            document.getElementById('profileBio').value = data.bio || '';
-            // 同步头像
-            const avatarSrc = document.getElementById('userAvatar')?.src || './me.png';
-            document.getElementById('profileAvatar').src = avatarSrc;
-            overlay.classList.add('open');
-        }
-
-        const profileOverlay = document.getElementById('profileOverlay');
-        document.getElementById('btnUserProfile')?.addEventListener('click', openProfile);
-        document.getElementById('userAvatar')?.addEventListener('click', openProfile);
-        document.getElementById('btnProfileClose')?.addEventListener('click', () => {
-            profileOverlay?.classList.remove('open');
-        });
-        if (profileOverlay) {
-            profileOverlay.addEventListener('click', (e) => {
-                if (e.target === profileOverlay) profileOverlay.classList.remove('open');
-            });
-        }
-        document.getElementById('btnProfileSave')?.addEventListener('click', () => {
-            const data = {
-                displayName: document.getElementById('profileDisplayName').value.trim(),
-                bio: document.getElementById('profileBio').value.trim()
-            };
-            saveProfileToDisk(data);
-            profileOverlay?.classList.remove('open');
-            // 双写：同步 profile 到 Supabase
-            if (window.AppStorage?.ready) {
-                AppStorage.saveProfile({
-                    display_name: data.displayName,
-                    bio: data.bio,
-                }).catch(() => {});
-            }
-        });
-
-        // ── 新存档：重置为全新体验，保持登录 ──
-        document.getElementById('btnProfileNewSave')?.addEventListener('click', () => {
-            profileOverlay?.classList.remove('open');
-            if (!confirm('重置记忆后，当前对话将清空。\n确定要重置吗？')) return;
-
-            // 清除存档（最多保留 3 个，这里直接清空重置）
-            localStorage.removeItem(Config.storageKeys.archives);
-            Archive.saveAll([]);
-
-            // 重置所有状态
-            resetSession();
-            State.activeArchiveId = null;
-
-            // 回到引导布局
-            document.querySelector('.main-layout')?.classList.remove('layout-conversation');
-            document.querySelector('.main-layout')?.classList.add('layout-intake');
-            document.getElementById('bgImage')?.classList.remove('sharp');
-
-            UI.clearMessages();
-            UI.lockChat();
-            UI.updateStatus('准备就绪', 'idle');
-
-            // 强制重新开始 VN（新用户体验）
-            vnIdx = -1;
-            Object.assign(vnData, { userName: '', skipSetup: false });
-            const box = document.getElementById('chatBox');
-            box.innerHTML = '';
-            box.onclick = null;
-            box.style.opacity = '';
-            box.style.transform = '';
-            box.style.transition = '';
-            UI.els.input.disabled = true;
-            if (UI.els.sendBtn) UI.els.sendBtn.disabled = true;
-            setTimeout(() => {
-                UI.unlockChat();
-                renderVnStep();
-            }, 600);
-        });
-
-        // ── 退出登录 ──
-        document.getElementById('btnProfileLogout')?.addEventListener('click', async () => {
-            profileOverlay?.classList.remove('open');
-            if (!confirm('确定要退出登录吗？')) return;
-
-            await AppAuth.signOut();
-
-            // 完全重置
-            resetSession();
-
-            // 重置 UI
-            document.querySelector('.main-layout')?.classList.remove('layout-conversation');
-            document.querySelector('.main-layout')?.classList.add('layout-intake');
-            document.getElementById('bgImage')?.classList.remove('sharp');
-            UI.clearMessages();
-            UI.hideReport();
-            UI.showOnboarding('focus');
-            UI.lockChat();
-
-            // 清空聊天框
-            const box = document.getElementById('chatBox');
-            box.innerHTML = '';
-            box.style.opacity = '';
-            box.style.transform = '';
-            box.style.transition = '';
-
-            // 重新显示认证页
-            const splash = document.getElementById('splashScreen');
-            if (splash) {
-                splash.classList.remove('hidden');
-                splash.style.display = '';
-                splash.style.opacity = '1';
-            }
-            const authScreen = document.getElementById('authScreen');
-            if (authScreen) {
-                authScreen.classList.remove('hidden');
-                authScreen.style.display = 'flex';
-                authScreen.style.opacity = '1';
-                authScreen.classList.add('show');
-            }
-            authResolved = false;
-            setupAuthUI();
-        });
-
-        // ── 头像更新时同步到 profile 弹窗 ──
-        const _origSetUserAvatar = UI.setUserAvatar;
-        UI.setUserAvatar = function(src) {
-            _origSetUserAvatar(src);
-            document.getElementById('profileAvatar').src = src;
-            document.getElementById('headerAvatar').src = src;
-        };
-
         App.init();
 
-        // ── 后台预加载 TTS 语气词缓存 ──
-        preloadInterjections();
-
-        // ── 开场：认证检查 + 城市闪屏 + 细雨 ──
+        // ── 开场：城市闪屏 + 细雨 + 点击进入 ──
         // 极细雨丝（画在城市图片上层）
         rainController = startRain('canvasBg', { dropCount: 120 });
 
         const splash = document.getElementById('splashScreen');
-        const authScreen = document.getElementById('authScreen');
-        let authResolved = false;
+        splash.onclick = () => {
+            // 用户手势触发音乐（完美解决自动播放限制）
+            UI.playMusic();
+            UI.playRain();
 
-        function startApp() {
-            if (authResolved) return;
-            authResolved = true;
+            // 闪屏淡出
+            splash.classList.add('hidden');
 
-            // 隐藏认证页
-            if (authScreen) { authScreen.classList.remove('show'); authScreen.style.display = 'none'; }
+            // canvas 雨丝淡出
+            if (rainController) rainController.fadeOut(1200);
 
-            splash.onclick = () => {
-                // 设置初始曲目
-                const bgMusic = document.getElementById('bgMusic');
-                if (bgMusic && !bgMusic.src.includes(MUSIC_PLAYLIST[_musicTrackIdx].file.slice(2))) {
-                    bgMusic.src = MUSIC_PLAYLIST[_musicTrackIdx].file;
-                    bgMusic.load();
-                }
-                updateTrackDisplay();
+            // 林出现
+            setTimeout(() => {
+                docPhoto.classList.add('visible');
+                docName.classList.add('visible');
+                splash.style.display = 'none';
+            }, 1200);
 
-                // 用户手势触发音乐（完美解决自动播放限制）
-                UI.playMusic();
-                UI.playRain();
-
-                // 闪屏淡出
-                splash.classList.add('hidden');
-
-                // canvas 雨丝淡出
-                if (rainController) rainController.fadeOut(1200);
-
-                // 林出现
-                setTimeout(() => {
-                    docPhoto.classList.add('visible');
-                    docName.classList.add('visible');
-                    splash.style.display = 'none';
-                }, 1200);
-
-                // VN 开始
-                setTimeout(() => {
-                    UI.playVoice();
-                    UI.unlockChat();
-                    startVnSequence();
-                }, 2200);
-            };
-        }
-
-        // ── 登录后从 Supabase 同步偏好／记忆（后台静默） ──
-        async function syncFromRemote() {
-            if (!window.AppStorage?.ready) return;
-            try {
-                const [settings, profile] = await Promise.all([
-                    AppStorage.loadSettings(),
-                    AppStorage.loadProfile(),
-                ]);
-                // 合并设置：远程优先，补全本地缺失的字段
-                if (settings) {
-                    const merged = { ...State.settings };
-                    // 只同步非敏感设置（API Key 不存远程）
-                    if (settings.use_mode) merged.useMode = settings.use_mode;
-                    if (settings.assess_model) merged.assessModel = settings.assess_model;
-                    if (settings.therapy_model) merged.therapyModel = settings.therapy_model;
-                    if (settings.api_base) merged.apiBase = settings.api_base;
-                    if (typeof settings.rag_enabled === 'boolean') merged.ragEnabled = settings.rag_enabled;
-                    if (typeof settings.enable_music === 'boolean') merged.enableMusic = settings.enable_music;
-                    Object.assign(State.settings, merged);
-                    persistSettings();
-                }
-                // 合并 profile
-                if (profile) {
-                    const local = JSON.parse(localStorage.getItem('shelter_profile') || '{}');
-                    if (profile.display_name && !local.displayName) local.displayName = profile.display_name;
-                    if (profile.bio && !local.bio) local.bio = profile.bio;
-                    localStorage.setItem('shelter_profile', JSON.stringify(local));
-                }
-            } catch {}
-        }
-
-        // ── 认证流程 ──
-        async function checkAuth() {
-            if (!window.AppAuth?.ready) {
-                // 未配置认证 → 直接进
-                if (authScreen) { authScreen.classList.remove('show'); authScreen.style.display = 'none'; }
-                startApp();
-                return;
-            }
-
-            const user = await AppAuth.getSession();
-            if (user) {
-                // 已有登录态 → 直接进
-                authScreen.classList.add('hidden');
-                startApp();
-                // 后台同步远程数据
-                syncFromRemote();
-            } else {
-                // 显示认证页，设置 UI
-                setupAuthUI();
-            }
-        }
-
-        function setupAuthUI() {
-            // 显示认证页
-            authScreen.classList.add('show');
-            requestAnimationFrame(() => authScreen.classList.remove('hidden'));
-            let isRegister = false;
-            const emailInput = document.getElementById('authEmail');
-            const passInput = document.getElementById('authPassword');
-            const confirmInput = document.getElementById('authConfirm');
-            const authBtn = document.getElementById('authBtn');
-            const authToggle = document.getElementById('authToggle');
-            const authError = document.getElementById('authError');
-            const authSuccess = document.getElementById('authSuccess');
-            const userInfo = document.getElementById('authUserInfo');
-            const userEmail = document.getElementById('authUserEmail');
-            const signOutBtn = document.getElementById('authSignOutBtn');
-
-            function setError(msg) { authError.textContent = msg; authSuccess.textContent = ''; }
-            function setSuccess(msg) { authSuccess.textContent = msg; authError.textContent = ''; }
-            function setLoading(loading) {
-                authBtn.disabled = loading;
-                authBtn.textContent = loading ? (isRegister ? '注册中...' : '登录中...') : (isRegister ? '注册并进入' : '进入避雨檐');
-            }
-
-            function switchMode(register) {
-                isRegister = register;
-                confirmInput.style.display = register ? '' : 'none';
-                authBtn.textContent = register ? '注册并进入' : '进入避雨檐';
-                authToggle.textContent = register ? '已有账号？去登录' : '没有账号？去注册';
-                setError('');
-                setSuccess('');
-            }
-
-            authToggle.onclick = () => switchMode(!isRegister);
-
-            // 确认页 → 回到登录
-            document.getElementById('authBackToLogin').onclick = () => {
-                document.getElementById('authConfirmView').style.display = 'none';
-                document.getElementById('authForm').style.display = '';
-                authToggle.style.display = '';
-                switchMode(false);
-                emailInput.value = document.getElementById('authConfirmEmail').textContent.trim();
-                passInput.focus();
-            };
-
-            authBtn.onclick = async () => {
-                const email = emailInput.value.trim();
-                const password = passInput.value;
-                if (!email) { setError('请输入邮箱'); return; }
-                if (!password || password.length < 6) { setError('密码至少 6 位'); return; }
-                if (isRegister && password !== confirmInput.value) { setError('两次密码不一致'); return; }
-
-                setError('');
-                setLoading(true);
-                try {
-                    if (isRegister) {
-                        await AppAuth.signUp(email, password);
-                        // 显示确认邮件提示页
-                        document.getElementById('authConfirmView').style.display = '';
-                        document.getElementById('authConfirmEmail').textContent = ' ' + email;
-                        document.getElementById('authForm').style.display = 'none';
-                        authToggle.style.display = 'none';
-                        setError('');
-                        setSuccess('');
-                    } else {
-                        await AppAuth.signIn(email, password);
-                        startApp();
-                    }
-                } catch (err) {
-                    setError(err.message || '操作失败');
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            // 记住登录状态
-            document.getElementById('authRemember').onchange = (e) => {
-                AppAuth.setPersist(e.target.checked);
-            };
-
-            // Enter 键提交
-            [emailInput, passInput, confirmInput].forEach(el => {
-                el.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') authBtn.click();
-                });
-            });
-
-            // 已登录用户信息
-            const currentUser = AppAuth.getUserEmail();
-            if (currentUser) {
-                userInfo.style.display = 'flex';
-                userEmail.textContent = currentUser;
-                signOutBtn.onclick = async () => {
-                    await AppAuth.signOut();
-                    userInfo.style.display = 'none';
-                    emailInput.value = currentUser;
-                    passInput.value = '';
-                    switchMode(false);
-                };
-            }
-        }
-
-        checkAuth();
+            // VN 开始
+            setTimeout(() => {
+                UI.playVoice();
+                UI.unlockChat();
+                startVnSequence();
+            }, 2200);
+        };
     });
 })();

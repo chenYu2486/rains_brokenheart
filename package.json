@@ -12,8 +12,5 @@
   "type": "commonjs",
   "dependencies": {
     "pdf-parse": "^2.4.5"
-  },
-  "devDependencies": {
-    "acorn": "^8.16.0"
   }
 }
