@@ -137,3 +137,11 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Large training data files (regenerated from source)
+data for training/shelter_train_data.jsonl
+data for training/shelter_train_data_clean.jsonl
+
+# Large reference PDFs > 100MB (GitHub limit)
+book_for_rag/中国精神分裂症防治指南(2025版)*
+book_for_rag/中国抑郁障碍防治指南(2025版)*
