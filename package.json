@@ -1,0 +1,19 @@
+{
+  "name": "rains_brokenheart-main",
+  "version": "1.0.0",
+  "description": "for mental health",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "pdf-parse": "^2.4.5"
+  },
+  "devDependencies": {
+    "acorn": "^8.16.0"
+  }
+}

@@ -1,0 +1,18 @@
+启动组 0-4 (PID: 45088)
+启动组 5-9 (PID: 68696)
+启动组 10-14 (PID: 68816)
+启动组 15-19 (PID: 44992)
+
+共 4 个并行进程，等待完成...
+组 0-4 完成，返回码: 0
+组 5-9 完成，返回码: 0
+组 10-14 完成，返回码: 0
+组 15-19 完成，返回码: 0
+
+合并所有文件到 Trainingdata.jsonl ...
+Traceback (most recent call last):
+  File "D:/rains_brokenheart-main/rains_brokenheart-main/data for training/generate_batch.py", line 49, in <module>
+    for line in f:
+                ^
+  File "<frozen codecs>", line 325, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0x80 in position 3948: invalid start byte

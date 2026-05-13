@@ -1,0 +1,1698 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>避雨檐 ShelterAI - 雨夜心理咨询室</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-deep: #0d1517;
+            --glass: rgba(255, 255, 255, 0.09);
+            --glass-strong: rgba(255, 255, 255, 0.14);
+            --border-light: rgba(255, 255, 255, 0.16);
+            --text-main: #f6f7f1;
+            --text-muted: rgba(246, 247, 241, 0.62);
+            --sage: #9ac7b7;
+            --sage-strong: #5ee0b7;
+            --rose: #e5a4a7;
+            --amber: #f1c36b;
+            --blue: #8db7d8;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+
+        body {
+            background: var(--bg-deep);
+            color: var(--text-main);
+            font-family: Inter, "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            overflow: hidden;
+        }
+
+        /* ── 背景 ── */
+        #bgImage {
+            position: fixed; inset: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            filter: blur(10px) brightness(0.7);
+            z-index: 0;
+            transition: filter 1.2s ease;
+            pointer-events: none;
+        }
+        #bgImage.sharp { filter: blur(3px) brightness(0.85); }
+
+        #canvasBg {
+            position: fixed; inset: 0;
+            z-index: 9999;
+            pointer-events: none;
+        }
+        #bgOverlay {
+            position: fixed; inset: 0;
+            background: linear-gradient(180deg, rgba(4,7,15,0.3) 0%, rgba(10,18,30,0.2) 50%, rgba(15,25,40,0.15) 100%);
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* ── 顶部栏 ── */
+        .app-header {
+            position: relative;
+            z-index: 15;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 28px;
+            background: rgba(8,16,24,0.3);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid rgba(180,210,200,0.08);
+        }
+        .brand-mark {
+            width: 34px; height: 34px;
+            display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 10px; color: #10201d;
+            background: linear-gradient(135deg, #5ee0b7, #9ac7b7);
+            margin-right: 10px;
+        }
+        .header-actions {
+            display: flex; gap: 8px;
+        }
+        .header-btn {
+            width: 36px; height: 36px;
+            border-radius: 10px; border: 1px solid rgba(180,210,200,0.15);
+            background: rgba(255,255,255,0.06);
+            color: rgba(240,245,240,0.7);
+            cursor: pointer; transition: background 0.2s;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+        }
+        .header-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+        /* ── 主布局：左医生 + 右对话 ── */
+        .main-layout {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            height: calc(100vh - 63px);
+            overflow: hidden;
+        }
+
+        /* 左侧：医生立绘区域 */
+        .doctor-region {
+            flex: 0 0 320px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+        }
+        .doc-photo {
+            width: 280px;
+            height: 350px;
+            object-fit: cover;
+            object-position: top;
+            border-radius: 24px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.9s ease, transform 0.9s ease;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .doc-photo.visible { opacity: 1; transform: translateY(0); }
+
+        .doc-name {
+            margin-top: 14px;
+            font-size: 15px;
+            font-weight: 600;
+            color: rgba(246,247,241,0.85);
+            opacity: 0;
+            transition: opacity 0.5s ease 0.4s;
+        }
+        .doc-name.visible { opacity: 1; }
+
+        .doc-status {
+            margin-top: 6px;
+            font-size: 12px;
+            color: rgba(154,199,183,0.5);
+            letter-spacing: 2px;
+        }
+
+        /* 右侧：对话区域 */
+        .chat-region {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            position: relative;
+            padding: 16px 28px 16px 8px;
+        }
+
+        #chatBox {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 0 20px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            scroll-behavior: smooth;
+        }
+        #chatBox::-webkit-scrollbar { width: 4px; }
+        #chatBox::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
+
+        /* 消息气泡 */
+        .msg-row {
+            display: flex;
+            animation: msgIn 0.35s ease forwards;
+            opacity: 0;
+            transform: translateY(8px);
+        }
+        @keyframes msgIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .msg-row.doctor { justify-content: flex-start; }
+        .msg-row.user { justify-content: flex-end; }
+        .msg-row.system { justify-content: center; }
+
+        .msg-bubble {
+            max-width: 86%;
+            padding: 14px 20px;
+            border-radius: 18px;
+            font-size: 15px;
+            line-height: 1.75;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .msg-bubble.doctor {
+            background: rgba(20,40,60,0.35);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(180,210,200,0.12);
+            color: rgba(240,245,240,0.92);
+            border-bottom-left-radius: 4px;
+        }
+        .msg-bubble.user {
+            background: rgba(80,160,140,0.2);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(94,224,183,0.18);
+            color: rgba(240,248,245,0.95);
+            border-bottom-right-radius: 4px;
+        }
+        .msg-bubble.system {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: rgba(246,247,241,0.5);
+            font-size: 12px;
+            padding: 6px 16px;
+            border-radius: 20px;
+        }
+
+        /* 打字指示器 */
+        .typing-indicator {
+            display: flex; gap: 4px; align-items: center; padding: 10px 16px;
+        }
+        .typing-indicator span {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: rgba(154,199,183,0.5);
+            animation: dotPulse 1.4s infinite ease-in-out both;
+        }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes dotPulse {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* 引用块 */
+        .citation-block {
+            margin-top: 6px;
+            padding: 8px 12px;
+            border-radius: 12px;
+            background: rgba(241,195,107,0.06);
+            border: 1px solid rgba(241,195,107,0.12);
+            font-size: 12px;
+            color: rgba(246,247,241,0.5);
+        }
+
+        /* ── 聊天覆盖层（加载中） ── */
+        #chatOverlay {
+            position: absolute; inset: 0; z-index: 20;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(8,16,24,0.5);
+            backdrop-filter: blur(4px);
+            transition: opacity 0.4s ease;
+        }
+        #chatOverlay.hidden { display: none; }
+
+        .overlay-card {
+            text-align: center; max-width: 320px;
+        }
+        .overlay-card i {
+            font-size: 32px; color: rgba(154,199,183,0.3); margin-bottom: 12px;
+        }
+        .overlay-card p {
+            font-size: 14px; color: rgba(246,247,241,0.55); line-height: 1.6;
+        }
+
+        /* ── 底部装饰文字 ── */
+        .input-bar {
+            display: flex; align-items: center; justify-content: center;
+            padding: 16px 0 20px 0;
+            border: none;
+            width: 100%;
+        }
+        .input-bar input {
+            width: 100%; max-width: 480px;
+            background: none;
+            border: none;
+            padding: 2px 0;
+            color: rgba(240,245,240,0.2);
+            font-size: 15px;
+            outline: none;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+        .input-bar input:focus { color: rgba(240,245,240,0.6); }
+        .input-bar input::placeholder { color: rgba(240,245,240,0.2); }
+
+        .input-bar button {
+            flex-shrink: 0;
+            width: 46px; height: 46px;
+            border-radius: 14px;
+            border: none;
+            background: linear-gradient(135deg, var(--sage-strong), var(--amber));
+            color: #10201d;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.15s;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+        }
+        .input-bar button:hover { transform: translateY(-1px); }
+        .input-bar button:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+
+        /* ── 侧边抽屉面板 ── */
+        #sidePanel {
+            position: fixed;
+            top: 0; right: 0; bottom: 0;
+            width: 340px;
+            z-index: 30;
+            background: rgba(8,16,24,0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-left: 1px solid rgba(180,210,200,0.1);
+            transform: translateX(100%);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+        }
+        #sidePanel.open { transform: translateX(0); }
+
+        .side-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 20px;
+            border-bottom: 1px solid rgba(180,210,200,0.08);
+        }
+        .side-header h3 { font-size: 15px; font-weight: 600; color: rgba(246,247,241,0.85); }
+        .side-header button {
+            background: none; border: none; color: rgba(246,247,241,0.4);
+            cursor: pointer; font-size: 18px; transition: color 0.2s;
+        }
+        .side-header button:hover { color: #fff; }
+
+        .side-scroll {
+            flex: 1; overflow-y: auto; padding: 16px 20px;
+        }
+        .side-scroll::-webkit-scrollbar { width: 3px; }
+        .side-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 10px; }
+
+        .glass-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+        .glass-card .label { font-size: 11px; color: rgba(246,247,241,0.4); margin-bottom: 4px; }
+        .glass-card .value { font-size: 13px; color: rgba(246,247,241,0.78); }
+
+        .risk-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+        }
+
+        .progress-track {
+            height: 6px;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.3);
+            overflow: hidden;
+            margin: 4px 0 10px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .focus-chip {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 10px;
+            font-size: 11px;
+            background: rgba(94,224,183,0.08);
+            border: 1px solid rgba(94,224,183,0.15);
+            color: rgba(231,255,247,0.85);
+            margin: 2px;
+        }
+
+        .archive-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 8px;
+            transition: background 0.2s, border-color 0.2s;
+            cursor: pointer;
+        }
+        .archive-card:hover { background: rgba(255,255,255,0.08); }
+        .archive-card.active { border-color: rgba(94,224,183,0.4); }
+
+        /* ── 建档模式：干净文字居中，无对话框 ── */
+        .main-layout.layout-intake {
+            flex-direction: column;
+            align-items: center;
+        }
+        .main-layout.layout-intake .doctor-region {
+            flex: 0 0 auto;
+            padding: 28px 20px 0;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+        }
+        .main-layout.layout-intake .doc-photo {
+            width: 180px;
+            height: 220px;
+            border-radius: 20px;
+            opacity: 0;
+            transform: translateY(12px);
+            transition: opacity 0.9s ease, transform 0.9s ease;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.35);
+        }
+        .main-layout.layout-intake .doc-photo.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .main-layout.layout-intake .doc-name {
+            margin-top: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: rgba(246,247,241,0.55);
+        }
+        .main-layout.layout-intake .doc-status { display: none; }
+
+        /* 文字舞台：无对话框，居中浮现 */
+        .main-layout.layout-intake .chat-region {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            border: none;
+            border-radius: 0;
+            margin: 0;
+            padding: 0 48px 10vh;
+            width: 100%;
+            max-width: none;
+            overflow: visible;
+        }
+        .main-layout.layout-intake .chat-region #chatBox {
+            max-height: none;
+            min-height: 0;
+            flex: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            overflow: visible;
+            padding: 0;
+        }
+        .main-layout.layout-intake .msg-bubble { display: none; }
+        .main-layout.layout-intake .input-bar {
+            padding: 6px 24px 12px;
+        }
+
+        /* ── VN 文本：大号白字，居中浮动 ── */
+        .vn-text {
+            font-size: 26px;
+            font-weight: 700;
+            color: #fff;
+            text-align: center;
+            line-height: 1.7;
+            font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", sans-serif;
+            animation: vnFadeIn 0.45s ease forwards;
+            white-space: pre-wrap;
+            letter-spacing: 0.02em;
+        }
+        @keyframes vnFadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* VN 选择：纯文字，无色块 */
+        .vn-choices {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            margin-top: 4px;
+        }
+        .vn-choice-item {
+            font-size: 20px;
+            color: rgba(255,255,255,0.72);
+            cursor: pointer;
+            padding: 4px 12px;
+            transition: color 0.2s;
+            animation: vnFadeIn 0.4s ease forwards;
+            background: none;
+            border: none;
+            font-family: inherit;
+            font-weight: 400;
+            text-align: center;
+            line-height: 1.6;
+        }
+        .vn-choice-item:hover { color: var(--sage-strong); }
+        .vn-choice-item:active { color: var(--sage-strong); }
+
+        /* VN 输入：干净嵌入 */
+        .vn-input-row {
+            display: flex;
+            gap: 8px;
+            animation: vnFadeIn 0.4s ease forwards;
+            margin-top: 4px;
+            align-items: center;
+        }
+        .vn-input {
+            background: rgba(10,22,30,0.1);
+            border: 1px solid rgba(180,210,200,0.08);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: rgba(240,245,240,0.9);
+            font-size: 16px;
+            outline: none;
+            min-width: 240px;
+            transition: border-color 0.2s;
+        }
+        .vn-input:focus { border-color: rgba(94,224,183,0.2); }
+        .vn-input::placeholder { color: rgba(240,245,240,0.2); }
+        .vn-send-btn {
+            width: 38px; height: 38px;
+            border-radius: 10px;
+            border: none;
+            background: linear-gradient(135deg, var(--sage-strong), var(--amber));
+            color: #10201d;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: transform 0.15s;
+        }
+        .vn-send-btn:hover { transform: translateY(-1px); }
+
+        /* ── 对话模式（建档后）── */
+        .conv-view { display: none; }
+        .main-layout.layout-conversation { flex-direction: column; }
+        .main-layout.layout-conversation .doctor-region,
+        .main-layout.layout-conversation .chat-region { display: none; }
+        .main-layout.layout-conversation .conv-view {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+        .conv-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 28px;
+            border-bottom: 1px solid rgba(180,210,200,0.06);
+            flex-shrink: 0;
+        }
+        .conv-header-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .conv-header-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .conv-user-avatar {
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            object-fit: cover;
+            object-position: center;
+            border: 2px solid rgba(241,195,107,0.15);
+        }
+        .conv-avatar {
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            object-fit: cover;
+            object-position: top;
+            border: 2px solid rgba(154,199,183,0.15);
+        }
+        .conv-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: rgba(246,247,241,0.9);
+        }
+        .conv-title {
+            font-size: 12px;
+            color: rgba(154,199,183,0.5);
+            margin-top: 1px;
+        }
+        .conv-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .conv-body {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            padding: 55px 0 12px;
+            overflow-y: scroll;
+            gap: 20px;
+            height: 33vh;
+            width: 80%;
+            margin: 0 auto;
+        }
+        .conv-body::-webkit-scrollbar { width: 3px; }
+        .conv-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+
+        /* AI 文本：左对齐浮现，无色块 */
+        .ai-line {
+            font-size: 24px;
+            font-weight: 500;
+            line-height: 1.8;
+            color: rgba(240,245,240,0.94);
+            max-width: 100%;
+            animation: vnFadeIn 0.4s ease forwards;
+            align-self: flex-start;
+            white-space: pre-wrap;
+            user-select: none;
+        }
+        /* 用户文本：右对齐，无色块 */
+        .user-line {
+            font-size: 24px;
+            font-weight: 500;
+            line-height: 1.8;
+            color: rgba(240,245,240,0.9);
+            max-width: 100%;
+            align-self: flex-end;
+            text-align: right;
+            animation: vnFadeIn 0.4s ease forwards;
+            white-space: pre-wrap;
+            cursor: pointer;
+            transition: color 0.25s ease;
+            user-select: none;
+            margin-top: 4px;
+        }
+        .user-line:hover { color: rgba(240,245,240,0.7); }
+        .user-avatar-wrap {
+            align-self: flex-end;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            animation: vnFadeIn 0.4s ease forwards;
+        }
+        .conv-body .input-hint {
+            font-size: 12px;
+            color: rgba(246,247,241,0.25);
+            text-align: center;
+            margin-top: auto;
+            padding-bottom: 8px;
+            animation: vnFadeIn 0.4s ease forwards;
+        }
+        .main-layout.layout-conversation .input-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 8px 0 12px;
+            width: 80%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            flex-shrink: 0;
+        }
+        .main-layout.layout-conversation .input-bar input {
+            flex: 1;
+            min-width: 0;
+            background: rgba(10,22,30,0.15);
+            border: 1px solid rgba(180,210,200,0.08);
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: rgba(240,245,240,0.9);
+            font-size: 15px;
+            outline: none;
+            text-align: left;
+            letter-spacing: 0.3px;
+            transition: border-color 0.2s;
+        }
+        .main-layout.layout-conversation .input-bar input:focus {
+            border-color: rgba(94,224,183,0.2);
+        }
+        .main-layout.layout-conversation .input-bar input::placeholder {
+            color: rgba(240,245,240,0.25);
+        }
+        .conv-send-btn {
+            flex-shrink: 0;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            border: none;
+            background: rgba(94, 224, 183, 0.2);
+            color: #8ae0c0;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+        }
+        .conv-send-btn:hover { background: rgba(94, 224, 183, 0.3); transform: translateY(-1px); }
+        .conv-send-btn:disabled { opacity: 0.2; cursor: not-allowed; transform: none; }
+
+        /* ── 响应式 ── */
+        @media (max-width: 860px) {
+            .main-layout { flex-direction: column; }
+            .doctor-region { flex: 0 0 auto; padding: 10px; flex-direction: row; gap: 16px; }
+            .doc-photo { width: 120px; height: 160px; }
+            .doc-name { margin-top: 0; }
+            .chat-region { padding: 8px 12px; }
+            .msg-bubble { max-width: 88%; font-size: 14px; }
+            #sidePanel { width: 100vw; }
+
+            .main-layout.layout-intake .doc-photo {
+                width: 130px;
+                height: 160px;
+            }
+            .main-layout.layout-intake .chat-region {
+                padding: 0 24px 8vh;
+            }
+            .vn-text {
+                font-size: 18px;
+            }
+            .vn-choice-item {
+                font-size: 16px;
+            }
+        }
+
+        /* ── 开场闪屏：城市 + 标题 + 点击进入 ── */
+        #splashScreen {
+            position: fixed; inset: 0; z-index: 8000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer;
+            background: #010308;
+            transition: opacity 1.2s ease;
+        }
+        #splashScreen.hidden { opacity: 0; pointer-events: none; }
+        .splash-bg {
+            position: absolute; inset: -10%;
+            background: url('./city.png') center bottom / cover no-repeat;
+            animation: splashZoom 10s ease-out forwards;
+        }
+        @keyframes splashZoom {
+            from { transform: scale(1); }
+            to { transform: scale(1.15); }
+        }
+        .splash-overlay {
+            position: absolute; inset: 0;
+            background: linear-gradient(180deg, rgba(1,3,8,0.25) 0%, rgba(1,3,8,0) 40%, rgba(1,3,8,0) 60%, rgba(1,3,8,0.3) 100%);
+        }
+        .splash-title {
+            position: relative; z-index: 1;
+            font-size: 48px;
+            font-weight: 700;
+            color: rgba(246,247,241,0.92);
+            text-shadow: 0 2px 24px rgba(0,0,0,0.6);
+            letter-spacing: 8px;
+            font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", sans-serif;
+            animation: splashPulse 3s ease-in-out infinite;
+            user-select: none;
+        }
+        .splash-subtitle {
+            position: relative; z-index: 1;
+            font-size: 14px;
+            color: rgba(154,199,183,0.8);
+            letter-spacing: 4px;
+            margin-top: 14px;
+            font-weight: 400;
+            font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", sans-serif;
+            animation: splashPulse 3s ease-in-out infinite;
+            animation-delay: 1s;
+            user-select: none;
+            text-shadow: 0 1px 10px rgba(0,0,0,0.5);
+        }
+        .splash-hint {
+            position: absolute; bottom: 12%; z-index: 1;
+            font-size: 14px;
+            color: rgba(246,247,241,0.3);
+            letter-spacing: 3px;
+            animation: splashPulse 3s ease-in-out infinite;
+            animation-delay: 1.5s;
+        }
+        @keyframes splashPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.55; }
+        }
+
+        /* ── 认证页 ── */
+        #authScreen {
+            position: fixed; inset: 0; z-index: 9000;
+            display: none; align-items: center; justify-content: center;
+            background: #010308;
+            transition: opacity 0.8s ease;
+        }
+        #authScreen.show { display: flex; }
+        #authScreen.hidden { opacity: 0; pointer-events: none; }
+        .auth-bg {
+            position: absolute; inset: 0;
+            background: radial-gradient(ellipse at center 30%, rgba(10,22,30,0.6) 0%, rgba(1,3,8,0.9) 70%);
+        }
+        .auth-card {
+            position: relative; z-index: 1;
+            width: 380px; max-width: 90vw;
+            padding: 40px 36px 36px;
+            background: rgba(15,28,38,0.75);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(180,210,200,0.08);
+            border-radius: 24px;
+            text-align: center;
+            animation: vnFadeIn 0.6s ease;
+        }
+        .auth-icon {
+            font-size: 32px; color: rgba(154,199,183,0.3);
+            margin-bottom: 12px; display: block;
+        }
+        .auth-title {
+            font-size: 24px; font-weight: 700;
+            color: rgba(246,247,241,0.9);
+            letter-spacing: 4px;
+            margin-bottom: 4px;
+        }
+        .auth-subtitle {
+            font-size: 13px; color: rgba(246,247,241,0.35);
+            margin-bottom: 28px;
+            letter-spacing: 1px;
+        }
+        .auth-error {
+            font-size: 13px; color: #e86a6a;
+            margin-bottom: 16px; min-height: 20px;
+            line-height: 1.4;
+        }
+        .auth-field {
+            width: 100%; box-sizing: border-box;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(180,210,200,0.08);
+            border-radius: 12px;
+            padding: 14px 16px;
+            color: rgba(246,247,241,0.85);
+            font-size: 15px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+            margin-bottom: 12px;
+        }
+        .auth-field:focus { border-color: rgba(94,224,183,0.25); }
+        .auth-field::placeholder { color: rgba(240,245,240,0.2); }
+        .auth-btn {
+            width: 100%; box-sizing: border-box;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--sage-strong), var(--amber));
+            color: #10201d;
+            font-size: 16px; font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.15s;
+            margin-top: 4px;
+            font-family: inherit;
+        }
+        .auth-btn:hover { transform: translateY(-1px); }
+        .auth-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .auth-btn.loading { opacity: 0.6; pointer-events: none; }
+        .auth-toggle {
+            font-size: 13px; color: rgba(246,247,241,0.35);
+            margin-top: 18px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .auth-toggle:hover { color: rgba(154,199,183,0.6); }
+        .auth-success {
+            font-size: 14px; color: rgba(94,224,183,0.7);
+            margin-bottom: 16px; min-height: 20px;
+            line-height: 1.4;
+        }
+        .auth-user {
+            font-size: 12px;
+            color: rgba(246,247,241,0.3);
+            margin-top: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+        .auth-user button {
+            background: none; border: 1px solid rgba(180,210,200,0.12);
+            border-radius: 8px;
+            padding: 4px 12px;
+            color: rgba(246,247,241,0.4);
+            font-size: 12px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .auth-user button:hover { color: rgba(246,247,241,0.7); border-color: rgba(180,210,200,0.25); }
+            position: fixed; inset: 0; z-index: 50;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(8,16,24,0.7);
+            backdrop-filter: blur(6px);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        #settingsOverlay.open { opacity: 1; pointer-events: auto; }
+
+        /* ── 历史对话记录 ── */
+        #historyOverlay {
+            position: fixed; inset: 0; z-index: 45;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(1,3,8,0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        #historyOverlay.open { opacity: 1; pointer-events: auto; }
+        .history-panel {
+            background: rgba(8,16,24,0.92);
+            border: 1px solid rgba(180,210,200,0.08);
+            border-radius: 20px;
+            padding: 24px 0;
+            width: 600px;
+            max-width: 88vw;
+            max-height: 75vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .history-panel h2 {
+            font-size: 16px; font-weight: 600; margin: 0 28px 16px;
+            color: rgba(246,247,241,0.85);
+        }
+        .history-panel h2 i { margin-right: 8px; color: var(--sage-strong); }
+        .history-list {
+            flex: 1; overflow-y: auto;
+            padding: 0 28px;
+        }
+        .history-list::-webkit-scrollbar { width: 3px; }
+        .history-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 10px; }
+        .history-entry {
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            animation: vnFadeIn 0.25s ease forwards;
+        }
+        .history-entry:last-child { border-bottom: none; }
+        .history-speaker {
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            letter-spacing: 1px;
+        }
+        .history-speaker.ai { color: var(--sage-strong); }
+        .history-speaker.user { color: var(--amber); }
+        .history-text {
+            font-size: 14px;
+            line-height: 1.7;
+            color: rgba(240,245,240,0.8);
+            white-space: pre-wrap;
+        }
+        .history-close {
+            margin: 12px 28px 0;
+            padding: 10px;
+            border-radius: 12px;
+            border: none;
+            background: rgba(255,255,255,0.06);
+            color: rgba(246,247,241,0.6);
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .history-close:hover { background: rgba(255,255,255,0.1); }
+
+        /* ── 存档列表弹窗（类似 ChatGPT 会话切换）── */
+        #archivesOverlay {
+            position: fixed; inset: 0; z-index: 45;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(1,3,8,0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        #archivesOverlay.open { opacity: 1; pointer-events: auto; }
+        .archives-panel {
+            background: rgba(8,16,24,0.92);
+            border: 1px solid rgba(180,210,200,0.08);
+            border-radius: 20px;
+            padding: 24px 0;
+            width: 560px;
+            max-width: 88vw;
+            max-height: 75vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .archives-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 24px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .archives-header h2 {
+            font-size: 16px; font-weight: 600; margin: 0;
+            color: rgba(246,247,241,0.85);
+        }
+        .archives-header h2 i { margin-right: 8px; color: var(--sage-strong); }
+        .archives-header button {
+            background: none; border: none;
+            color: rgba(246,247,241,0.4); cursor: pointer;
+            font-size: 18px; padding: 4px;
+            transition: color 0.2s;
+        }
+        .archives-header button:hover { color: rgba(246,247,241,0.8); }
+        .archives-list {
+            flex: 1; overflow-y: auto;
+            padding: 8px 24px;
+        }
+        .archives-list::-webkit-scrollbar { width: 3px; }
+        .archives-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 10px; }
+        .archives-empty {
+            text-align: center; padding: 40px 0;
+            color: rgba(246,247,241,0.3); font-size: 14px;
+        }
+        .archives-card {
+            padding: 14px;
+            margin-bottom: 8px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.04);
+            background: rgba(255,255,255,0.03);
+            transition: background 0.2s, border-color 0.2s;
+            cursor: pointer;
+        }
+        .archives-card:hover { background: rgba(255,255,255,0.06); border-color: rgba(180,210,200,0.1); }
+        .archives-card:active { transform: scale(0.995); }
+        .archives-card.archives-card-active { border-color: rgba(94,224,183,0.25); background: rgba(94,224,183,0.06); }
+        .archives-card-title {
+            font-size: 14px; font-weight: 600;
+            color: rgba(246,247,241,0.85);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .archives-card-meta {
+            display: flex; gap: 10px;
+            margin-top: 4px;
+            font-size: 11px; color: rgba(246,247,241,0.3);
+        }
+        .archives-card-actions {
+            display: flex; gap: 8px; margin-top: 10px;
+        }
+        .archives-card-actions button {
+            flex: 1; padding: 8px;
+            border-radius: 10px; border: none;
+            font-size: 12px; cursor: pointer;
+            transition: background 0.2s;
+        }
+        .archives-btn-load {
+            background: rgba(94,224,183,0.12);
+            color: var(--sage-strong);
+        }
+        .archives-btn-load:hover { background: rgba(94,224,183,0.2); }
+        .archives-btn-del {
+            background: rgba(255,255,255,0.04);
+            color: rgba(246,247,241,0.5);
+        }
+        .archives-btn-del:hover { background: rgba(255,70,70,0.12); color: #ff6b6b; }
+        .settings-panel {
+            background: rgba(16,30,40,0.95);
+            border: 1px solid rgba(180,210,200,0.12);
+            border-radius: 20px;
+            padding: 28px 32px;
+            width: 420px;
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .settings-panel h2 {
+            font-size: 18px; font-weight: 600; margin: 0 0 20px;
+            color: rgba(240,245,240,0.9);
+        }
+        .settings-group { margin-bottom: 18px; }
+        .settings-group label {
+            display: block;
+            font-size: 13px;
+            color: rgba(240,245,240,0.55);
+            margin-bottom: 6px;
+        }
+        .settings-group input[type="text"],
+        .settings-group input[type="file"] {
+            width: 100%;
+            background: rgba(10,22,30,0.3);
+            border: 1px solid rgba(180,210,200,0.1);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: rgba(240,245,240,0.9);
+            font-size: 13px;
+            outline: none;
+            box-sizing: border-box;
+        }
+        .settings-group input:focus { border-color: rgba(94,224,183,0.25); }
+        .settings-group input::placeholder { color: rgba(240,245,240,0.2); }
+        .settings-group .or-divider {
+            font-size: 11px; color: rgba(240,245,240,0.2);
+            text-align: center; padding: 4px 0;
+        }
+        .settings-close {
+            margin-top: 16px;
+            width: 100%;
+            padding: 10px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, var(--sage-strong), var(--amber));
+            color: #10201d;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .cfg-mode-btn.mode-active {
+            background: rgba(94,224,183,0.12) !important;
+            color: var(--sage-strong) !important;
+            border-color: rgba(94,224,183,0.25) !important;
+            box-shadow: 0 0 12px rgba(94,224,183,0.08);
+        }
+
+        /* ── 个人信息弹窗 ── */
+        #profileOverlay {
+            position: fixed; inset: 0; z-index: 55;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(8,16,24,0.7);
+            backdrop-filter: blur(6px);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        #profileOverlay.open { opacity: 1; pointer-events: auto; }
+        .profile-panel {
+            background: rgba(16,30,40,0.95);
+            border: 1px solid rgba(180,210,200,0.12);
+            border-radius: 20px;
+            width: 380px;
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+            animation: vnFadeIn 0.3s ease;
+        }
+        .profile-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 20px 24px 0;
+        }
+        .profile-header h2 {
+            font-size: 16px; font-weight: 600; margin: 0;
+            color: rgba(240,245,240,0.9);
+        }
+        .profile-header button {
+            background: none; border: none; color: rgba(246,247,241,0.4);
+            cursor: pointer; font-size: 18px; transition: color 0.2s;
+        }
+        .profile-header button:hover { color: #fff; }
+        .profile-body {
+            padding: 16px 24px 24px;
+        }
+        .profile-avatar-section {
+            display: flex; justify-content: center; margin-bottom: 16px;
+        }
+        .profile-avatar-section img {
+            width: 72px; height: 72px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid rgba(154,199,183,0.2);
+        }
+        .profile-field {
+            margin-bottom: 14px;
+        }
+        .profile-field label {
+            display: block;
+            font-size: 12px; color: rgba(240,245,240,0.5);
+            margin-bottom: 4px;
+        }
+        .profile-email-display {
+            font-size: 14px; color: rgba(240,245,240,0.8);
+            padding: 6px 0;
+        }
+        .profile-field input,
+        .profile-field textarea {
+            width: 100%; box-sizing: border-box;
+            background: rgba(10,22,30,0.3);
+            border: 1px solid rgba(180,210,200,0.1);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: rgba(240,245,240,0.9);
+            font-size: 13px;
+            outline: none;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .profile-field input:focus,
+        .profile-field textarea:focus {
+            border-color: rgba(94,224,183,0.25);
+        }
+        .profile-field input::placeholder,
+        .profile-field textarea::placeholder {
+            color: rgba(240,245,240,0.2);
+        }
+        .profile-btn {
+            display: block; width: 100%; box-sizing: border-box;
+            padding: 12px; border-radius: 12px;
+            font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: opacity 0.2s, transform 0.15s;
+            border: none; font-family: inherit;
+            text-align: center;
+        }
+        .profile-btn:hover { transform: translateY(-1px); }
+        .profile-btn:active { transform: translateY(0); }
+        .profile-btn-primary {
+            background: linear-gradient(135deg, var(--sage-strong), var(--amber));
+            color: #10201d;
+            margin-bottom: 4px;
+        }
+        .profile-btn-secondary {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(180,210,200,0.1);
+            color: rgba(246,247,241,0.75);
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        .profile-btn-danger {
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.15);
+            color: rgba(252,165,165,0.8);
+            font-weight: 500;
+        }
+        .profile-btn-danger:hover { background: rgba(239,68,68,0.15); }
+        .profile-btn-hint {
+            display: block;
+            font-size: 11px; font-weight: 400;
+            color: rgba(246,247,241,0.35);
+            margin-top: 2px;
+        }
+        .profile-btn-danger .profile-btn-hint {
+            color: rgba(252,165,165,0.4);
+        }
+        .profile-divider {
+            height: 1px;
+            background: rgba(255,255,255,0.06);
+            margin: 16px 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 背景 -->
+    <canvas id="canvasBg"></canvas>
+    <img id="bgImage" src="./background.png" alt="">
+    <div id="bgOverlay"></div>
+
+    <!-- 开场闪屏 -->
+    <div id="splashScreen">
+        <div class="splash-bg"></div>
+        <div class="splash-overlay"></div>
+        <div class="splash-title">欢迎来到避雨檐</div>
+        <div class="splash-subtitle"><span style="color:rgba(60,120,100,0.85);">一个安静，温暖，陪伴</span><span style="color:rgba(154,199,183,0.8);">你的聊天室</span></div>
+        <div class="splash-hint">— 点击进入 —</div>
+    </div>
+
+    <!-- 认证页 -->
+    <div id="authScreen">
+        <div class="auth-bg"></div>
+        <div class="auth-card">
+            <i class="fas fa-cloud-rain auth-icon"></i>
+            <div class="auth-title">避雨檐</div>
+            <div class="auth-subtitle">情绪陪伴空间</div>
+            <div class="auth-error" id="authError"></div>
+            <div class="auth-success" id="authSuccess"></div>
+            <div id="authForm">
+                <input id="authEmail" class="auth-field" type="email" placeholder="邮箱地址" autocomplete="email">
+                <input id="authPassword" class="auth-field" type="password" placeholder="密码" autocomplete="current-password">
+                <input id="authConfirm" class="auth-field" type="password" placeholder="再次输入密码" autocomplete="new-password" style="display:none;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(246,247,241,0.35);margin-bottom:12px;cursor:pointer;user-select:none;">
+                    <input type="checkbox" id="authRemember" checked style="accent-color:var(--sage-strong);width:16px;height:16px;">
+                    记住登录状态，下次自动进入
+                </label>
+                <button id="authBtn" class="auth-btn">进入避雨檐</button>
+            </div>
+            <div class="auth-toggle" id="authToggle">没有账号？去注册</div>
+            <div id="authConfirmView" style="display:none;">
+                <div style="font-size:40px;margin-bottom:12px;color:rgba(94,224,183,0.3);">✉️</div>
+                <div style="font-size:16px;color:rgba(246,247,241,0.8);margin-bottom:6px;">确认邮件已发送</div>
+                <div style="font-size:13px;color:rgba(246,247,241,0.4);line-height:1.6;margin-bottom:4px;">
+                    请检查你的邮箱<span id="authConfirmEmail" style="color:rgba(154,199,183,0.6);"></span>
+                </div>
+                <div style="font-size:12px;color:rgba(246,247,241,0.25);margin-bottom:20px;line-height:1.5;">
+                    没收到的话，看看垃圾箱<br>
+                    或等一分钟后点击重新发送
+                </div>
+                <button id="authBackToLogin" class="auth-btn" style="margin-bottom:8px;background:rgba(255,255,255,0.06);color:rgba(246,247,241,0.5);font-weight:400;font-size:13px;">已确认，去登录</button>
+            </div>
+            <div class="auth-user" id="authUserInfo" style="display:none;">
+                <span id="authUserEmail"></span>
+                <button id="authSignOutBtn">退出登录</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 音频 -->
+    <audio id="bgRain" src="./43344__inchadney__rain.mp3" loop preload="auto"></audio>
+    <audio id="bgMusic" src="./826622__xkeril__memories-of-a-sweet-summer-music-loop.wav" loop preload="auto"></audio>
+    <audio id="voiceThink" src="./en.mp3" preload="auto"></audio>
+    <audio id="voiceEn" src="./en.mp3" preload="auto"></audio>
+    <audio id="voiceHappy" src="./happy.mp3" preload="auto"></audio>
+
+    <!-- 顶部栏 -->
+    <header class="app-header">
+        <div style="display:flex;align-items:center;">
+            <div class="brand-mark"><i class="fas fa-cloud-rain"></i></div>
+            <h1 style="font-size:16px;font-weight:600;margin:0;">避雨檐 <span style="font-weight:400;color:var(--sage-strong);">ShelterAI</span></h1>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <div id="statusDot" style="width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.3);flex-shrink:0;"></div>
+            <span id="statusLabel" style="font-size:12px;color:rgba(246,247,241,0.5);"></span>
+        </div>
+        <div class="header-actions">
+            <button id="btnToggleRain" class="header-btn" title="雨声开关"><i class="fas fa-cloud-rain"></i></button>
+            <button id="btnToggleMusic" class="header-btn" title="背景音乐开关"><i class="fas fa-music"></i></button>
+            <span id="musicTrackDisplay" style="font-size:11px;color:rgba(246,247,241,0.35);cursor:pointer;padding:0 4px;user-select:none;white-space:nowrap;" title="点击切换曲目"></span>
+            <button id="btnUserProfile" class="header-btn" title="个人信息" style="overflow:hidden;"><img id="headerAvatar" src="./me.png" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" alt=""></button>
+            <button id="btnSettings" class="header-btn" title="自定义设置"><i class="fas fa-gear"></i></button>
+            <button id="btnArchives" class="header-btn" title="存档列表"><i class="fas fa-folder-tree"></i></button>
+            <button id="btnTogglePanel" class="header-btn" title="档案与存档"><i class="fas fa-chart-simple"></i></button>
+            <button id="btnNewChat" class="header-btn" title="新的对话"><i class="fas fa-plus"></i></button>
+        </div>
+    </header>
+
+    <!-- 主布局：左医生 + 右对话 -->
+    <div class="main-layout layout-intake">
+        <!-- 左侧：林知微 -->
+        <div class="doctor-region">
+            <img id="docPhoto" class="doc-photo" src="./smile.png" alt="林知微">
+            <div id="docName" class="doc-name">林知微</div>
+            <div class="doc-status">正在陪伴你</div>
+        </div>
+
+        <!-- 右侧：对话 -->
+        <div class="chat-region">
+            <div id="chatBox"></div>
+
+            <div id="chatOverlay" class="hidden">
+                <div class="overlay-card">
+                    <i class="fas fa-cloud-rain"></i>
+                    <p id="overlayText">咨询准备中，请稍候。</p>
+                </div>
+            </div>
+
+            <div class="input-bar">
+                <input id="userInput" type="text" value="把此刻最真实的感受放在这里..." readonly>
+            </div>
+        </div>
+
+        <!-- 对话模式（建档后）：单行浮现 + 无色块 -->
+        <div class="conv-view">
+            <div class="conv-header">
+                <div class="conv-header-left">
+                    <img class="conv-avatar" src="./smile.png" alt="林知微">
+                    <div>
+                        <div class="conv-name">林知微</div>
+                        <div class="conv-title">情绪陪伴师</div>
+                    </div>
+                </div>
+                <div class="conv-header-right">
+                    <img class="conv-user-avatar" id="userAvatar" src="./me.png" alt="">
+                    <div class="conv-actions">
+                        <button class="header-btn" id="btnConvHistory" title="对话记录"><i class="fas fa-clock-rotate-left"></i></button>
+                        <button class="header-btn" id="btnConvReport" title="状态画像"><i class="fas fa-chart-simple"></i></button>
+                    </div>
+                </div>
+            </div>
+            <div class="conv-body" id="convBody">
+                <div id="aiLine" class="ai-line"></div>
+                <div id="userLine" class="user-line"></div>
+            </div>
+            <div class="input-bar">
+                <input id="convInput" type="text" placeholder="把此刻最真实的感受放在这里..." disabled>
+                <button id="convSendBtn" class="conv-send-btn" disabled><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 侧边抽屉：档案与存档 -->
+    <aside id="sidePanel">
+        <div class="side-header">
+            <h3><i class="fas fa-chart-simple" style="margin-right:8px;color:var(--sage-strong);"></i>会话信息</h3>
+            <button id="btnClosePanel"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="side-scroll">
+            <!-- 引导摘要 -->
+            <div id="sideIntakePanel">
+                <div class="glass-card">
+                    <div class="label">对话准备</div>
+                    <h4 style="margin:6px 0 10px 0;font-size:15px;">已完成引导</h4>
+                    <div id="profileSummary" class="space-y-3">
+                        <div style="font-size:13px;color:rgba(246,247,241,0.5);">等待整理你的引导信息。</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 状态画像报告 -->
+            <div id="panelReport" style="display:none;">
+                <div class="glass-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div>
+                            <div class="label">状态画像</div>
+                            <div style="font-size:11px;color:rgba(246,247,241,0.35);">初评与定期复评会在这里更新。</div>
+                        </div>
+                        <span id="riskBadge" class="risk-badge" style="background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.2);color:#6ee7b7;">风险 low</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(246,247,241,0.4);margin-bottom:10px;">
+                        <span id="reportStage">状态追踪</span>
+                        <span id="reportUpdatedAt">--</span>
+                    </div>
+                    <div id="reportModel" style="font-size:11px;color:rgba(246,247,241,0.3);margin-bottom:10px;">评估模型来源未记录</div>
+                    <div id="riskAlert" style="display:none;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.15);border-radius:10px;padding:10px;font-size:12px;color:rgba(254,202,202,0.85);margin-bottom:12px;"></div>
+
+                    <!-- 指标 -->
+                    <div class="label">压力负荷</div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;"><span style="color:rgba(246,247,241,0.55);">压力负荷</span><span id="scoreStress" style="color:var(--amber);font-weight:700;">0/100</span></div>
+                    <div class="progress-track"><div id="barStress" class="progress-bar" style="width:0%;background:linear-gradient(90deg,#fcd34d,#fb7185);"></div></div>
+
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;"><span style="color:rgba(246,247,241,0.55);">情绪内耗</span><span id="scoreFriction" style="color:var(--blue);font-weight:700;">0/100</span></div>
+                    <div class="progress-track"><div id="barFriction" class="progress-bar" style="width:0%;background:linear-gradient(90deg,#7dd3fc,#c4b5fd);"></div></div>
+
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;"><span style="color:rgba(246,247,241,0.55);">风险水平</span><span id="scoreRisk" style="color:#fdba74;font-weight:700;">0/100</span></div>
+                    <div class="progress-track"><div id="barRisk" class="progress-bar" style="width:0%;background:linear-gradient(90deg,#fdba74,#f87171);"></div></div>
+
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;"><span style="color:rgba(246,247,241,0.55);">恢复弹性</span><span id="scoreResilience" style="color:var(--sage-strong);font-weight:700;">0/100</span></div>
+                    <div class="progress-track"><div id="barResilience" class="progress-bar" style="width:0%;background:linear-gradient(90deg,#6ee7b7,#2dd4bf);"></div></div>
+
+                    <!-- 文本字段 -->
+                    <div style="margin-top:14px;">
+                        <div class="label">本次摘要</div>
+                        <div id="txtSummary" style="font-size:13px;line-height:1.6;color:rgba(167,243,208,0.85);margin-top:4px;">尚未生成</div>
+                    </div>
+                    <div style="margin-top:12px;">
+                        <div class="label">核心痛点</div>
+                        <div id="txtCore" style="font-size:12px;color:rgba(246,247,241,0.65);margin-top:4px;">尚未生成</div>
+                    </div>
+                    <div style="margin-top:12px;">
+                        <div class="label">认知模式</div>
+                        <div id="txtCognitive" style="font-size:12px;color:rgba(246,247,241,0.65);margin-top:4px;">尚未生成</div>
+                    </div>
+                    <div style="margin-top:12px;">
+                        <div class="label">当前陪伴焦点</div>
+                        <div id="txtSupportFocus" style="font-size:12px;color:rgba(246,247,241,0.65);margin-top:4px;">尚未生成</div>
+                    </div>
+                    <div style="margin-top:12px;">
+                        <div class="label">建议疗愈风格</div>
+                        <div id="txtStyle" style="font-size:12px;color:rgba(246,247,241,0.65);margin-top:4px;">尚未生成</div>
+                    </div>
+                    <div style="margin-top:12px;">
+                        <div class="label">下一步建议</div>
+                        <div id="listNextSteps" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;"></div>
+                    </div>
+                    <div style="margin-top:12px;">
+                        <div class="label">下次复评重点</div>
+                        <div id="txtFollowUp" style="font-size:12px;color:rgba(246,247,241,0.65);margin-top:4px;">尚未生成</div>
+                    </div>
+                    <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);">
+                        <div class="label">追踪记录</div>
+                        <div id="reportHistoryList" style="margin-top:6px;display:flex;flex-direction:column;gap:6px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 会话存档 -->
+            <div id="archivePanel">
+                <div class="glass-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div>
+                            <div class="label">会话存档</div>
+                            <div id="archivePanelHint" style="font-size:11px;color:rgba(246,247,241,0.35);margin-top:2px;">对话可随时暂存，稍后继续。</div>
+                        </div>
+                        <button id="btnToggleArchive" type="button" style="background:none;border:none;color:rgba(246,247,241,0.4);cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px;">
+                            <i id="archiveToggleIcon" class="fas fa-chevron-up" style="font-size:10px;transition:transform 0.3s;"></i>
+                            <span id="archiveToggleText">收起</span>
+                        </button>
+                    </div>
+                    <div id="archivePanelBody">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+                            <button id="btnSaveArchive" type="button" style="padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:rgba(246,247,241,0.75);cursor:pointer;font-size:12px;transition:background 0.2s;">
+                                <i class="fas fa-box-archive" style="margin-right:4px;"></i>存档
+                            </button>
+                            <button type="button" style="padding:8px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--sage-strong),var(--amber));color:#10201d;cursor:pointer;font-size:12px;font-weight:600;" onclick="App?.saveArchive?.() || App.startDirect()">
+                                <i class="fas fa-rotate-left" style="margin-right:4px;"></i>暂存
+                            </button>
+                        </div>
+                        <div id="archiveList" style="max-height:200px;overflow-y:auto;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 设置弹窗 -->
+    <div id="settingsOverlay">
+        <div class="settings-panel">
+            <h2><i class="fas fa-sliders" style="margin-right:8px;color:var(--sage-strong);"></i>自定义设置</h2>
+
+            <!-- ── 连接模式 ── -->
+            <div class="settings-group">
+                <label>连接模式</label>
+                <div id="cfgModeDisplay" style="font-size:13px;color:rgba(240,245,240,0.7);padding:6px 0;">
+                    加载中...
+                </div>
+                <div style="display:flex;gap:8px;margin-top:6px;">
+                    <button id="cfgModeTrial" class="cfg-mode-btn" data-mode="proxy" style="flex:1;padding:8px 10px;border-radius:10px;border:1px solid rgba(180,210,200,0.12);background:rgba(94,224,183,0.1);color:var(--sage-strong);cursor:pointer;font-size:12px;transition:all 0.2s;">免费试用</button>
+                    <button id="cfgModeDirect" class="cfg-mode-btn" data-mode="direct" style="flex:1;padding:8px 10px;border-radius:10px;border:1px solid rgba(180,210,200,0.08);background:rgba(255,255,255,0.04);color:rgba(246,247,241,0.5);cursor:pointer;font-size:12px;transition:all 0.2s;">自带 Key</button>
+                </div>
+                <div id="cfgQuotaDisplay" style="font-size:11px;color:rgba(246,247,241,0.35);margin-top:4px;"></div>
+            </div>
+
+            <div class="settings-group" id="cfgApiKeyGroup">
+                <label>API Key（自带 Key 模式必填）</label>
+                <input type="text" id="cfgKey" placeholder="sk-..." value="">
+            </div>
+
+            <div class="settings-group">
+                <label>API 地址</label>
+                <input type="text" id="cfgBase" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" value="">
+            </div>
+
+            <!-- ── 模型 ── -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="settings-group">
+                    <label>评估模型</label>
+                    <input type="text" id="cfgAssess" placeholder="qwen-turbo-latest">
+                </div>
+                <div class="settings-group">
+                    <label>陪伴模型</label>
+                    <input type="text" id="cfgTherapy" placeholder="qwen3-max-preview">
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="settings-group" style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" id="cfgAssessThinking" style="accent-color:var(--sage-strong);">
+                    <label for="cfgAssessThinking" style="font-size:12px;margin:0;">评估模型启用思考</label>
+                </div>
+                <div class="settings-group" style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" id="cfgTherapyThinking" style="accent-color:var(--sage-strong);">
+                    <label for="cfgTherapyThinking" style="font-size:12px;margin:0;">陪伴模型启用思考</label>
+                </div>
+            </div>
+
+            <!-- ── 对话参数 ── -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px;">
+                <div class="settings-group">
+                    <label>建档轮次 (2-8)</label>
+                    <input type="number" id="cfgIntakeTurns" min="2" max="8" placeholder="4">
+                </div>
+                <div class="settings-group">
+                    <label>复评间隔 (3-12)</label>
+                    <input type="number" id="cfgReassessEvery" min="3" max="12" placeholder="6">
+                </div>
+            </div>
+
+            <!-- ── RAG ── -->
+            <div class="settings-group" style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                <input type="checkbox" id="cfgRagEnabled" style="accent-color:var(--sage-strong);">
+                <label for="cfgRagEnabled" style="font-size:12px;margin:0;">启用知识库辅助</label>
+            </div>
+            <div id="cfgRagFields" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="settings-group">
+                    <label>知识库 ID</label>
+                    <input type="text" id="cfgKbId" placeholder="mental-health-zh-v1">
+                </div>
+                <div class="settings-group">
+                    <label>知识库路径</label>
+                    <input type="text" id="cfgKbPath" placeholder="./data/kb/combined_knowledge.json">
+                </div>
+                <div class="settings-group">
+                    <label>Top-K</label>
+                    <input type="number" id="cfgRagTopK" min="1" max="6" placeholder="3">
+                </div>
+                <div class="settings-group">
+                    <label>最低匹配分</label>
+                    <input type="number" id="cfgRagMinScore" min="0" max="1" step="0.01" placeholder="0.12">
+                </div>
+            </div>
+            <div id="cfgRagStatus" style="font-size:11px;color:rgba(246,247,241,0.35);margin:2px 0 8px;"></div>
+
+            <!-- ── 自定义 ── -->
+            <div style="margin-top:8px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);">
+                <div style="font-size:12px;color:rgba(246,247,241,0.5);margin-bottom:10px;">个性化</div>
+                <div class="settings-group">
+                    <label>背景音乐 (URL 或本地文件)</label>
+                    <input type="text" id="settingsMusicUrl" placeholder="输入音乐 URL..." value="">
+                    <div class="or-divider">— 或者 —</div>
+                    <input type="file" id="settingsMusicFile" accept="audio/*">
+                </div>
+
+                <div class="settings-group">
+                    <label>雨声音效 (URL 或本地文件)</label>
+                    <input type="text" id="settingsRainUrl" placeholder="输入雨声 URL..." value="">
+                    <div class="or-divider">— 或者 —</div>
+                    <input type="file" id="settingsRainFile" accept="audio/*">
+                </div>
+
+                <div class="settings-group">
+                    <label>聊天背景 (URL 或本地文件)</label>
+                    <input type="text" id="settingsBgUrl" placeholder="输入图片 URL..." value="">
+                    <div class="or-divider">— 或者 —</div>
+                    <input type="file" id="settingsBgFile" accept="image/*">
+                </div>
+
+                <div class="settings-group">
+                    <label>我的头像 (URL 或本地文件)</label>
+                    <input type="text" id="settingsUserAvatarUrl" placeholder="输入头像 URL..." value="">
+                    <div class="or-divider">— 或者 —</div>
+                    <input type="file" id="settingsUserAvatarFile" accept="image/*">
+                </div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button class="settings-close" id="btnSettingsClose" style="flex:1;background:rgba(255,255,255,0.06);color:rgba(246,247,241,0.6);border:1px solid rgba(180,210,200,0.1);">关闭</button>
+                <button class="settings-close" id="btnSaveSettings" style="flex:2;">保存设置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 历史对话记录 -->
+    <div id="historyOverlay">
+        <div class="history-panel">
+            <h2><i class="fas fa-clock-rotate-left"></i>对话记录</h2>
+            <div class="history-list" id="historyList"></div>
+            <button class="history-close" id="btnHistoryClose">关闭</button>
+        </div>
+    </div>
+
+    <!-- 存档列表（会话切换，如 ChatGPT 侧栏） -->
+    <div id="archivesOverlay">
+        <div class="archives-panel">
+            <div class="archives-header">
+                <h2><i class="fas fa-folder-tree"></i>会话存档</h2>
+                <button id="btnArchivesClose"><i class="fas fa-xmark"></i></button>
+            </div>
+            <div class="archives-list" id="archivesList"></div>
+        </div>
+    </div>
+
+    <!-- 个人信息弹窗 -->
+    <div id="profileOverlay">
+        <div class="profile-panel">
+            <div class="profile-header">
+                <h2><i class="fas fa-user" style="margin-right:8px;color:var(--sage-strong);"></i>个人信息</h2>
+                <button id="btnProfileClose"><i class="fas fa-xmark"></i></button>
+            </div>
+            <div class="profile-body">
+                <div class="profile-avatar-section">
+                    <img id="profileAvatar" src="./me.png" alt="">
+                </div>
+                <div class="profile-field">
+                    <label>邮箱</label>
+                    <div id="profileEmail" class="profile-email-display">--</div>
+                </div>
+                <div class="profile-field">
+                    <label>显示名称</label>
+                    <input type="text" id="profileDisplayName" placeholder="你的名字" maxlength="20">
+                </div>
+                <div class="profile-field">
+                    <label>个人简介</label>
+                    <textarea id="profileBio" placeholder="写一句话介绍自己…" maxlength="100" rows="3"></textarea>
+                </div>
+                <button id="btnProfileSave" class="profile-btn profile-btn-primary">保存信息</button>
+
+                <div class="profile-divider"></div>
+
+                <button id="btnProfileNewSave" class="profile-btn profile-btn-secondary">
+                    <i class="fas fa-file-pen"></i> 新存档
+                    <span class="profile-btn-hint">从头开始，重新体验引导流程</span>
+                </button>
+                <button id="btnProfileLogout" class="profile-btn profile-btn-danger">
+                    <i class="fas fa-right-from-bracket"></i> 退出登录
+                    <span class="profile-btn-hint">切换账号，或重新登录</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 隐藏字段 -->
+    <div style="display:none">
+        <input type="hidden" id="warmupMoodVal">
+        <textarea id="warmupConcern"></textarea>
+        <input type="text" id="warmupBody">
+        <select id="warmupPreference">
+            <option value="倾听与承接">倾听与承接</option>
+            <option value="梳理与建议">梳理与建议</option>
+            <option value="安静陪伴">安静陪伴</option>
+            <option value="情绪安抚">情绪安抚</option>
+        </select>
+        <input type="text" id="warmupHope">
+        <input type="hidden" id="setupKey">
+        <input type="hidden" id="setupBase">
+        <input type="hidden" id="setupAssess">
+        <input type="hidden" id="setupTherapy">
+        <input type="hidden" id="setupRagEnabled">
+        <button id="btnWarmupNext" style="display:none"></button>
+        <button id="btnIntroNext" style="display:none"></button>
+    </div>
+
+    <script src="./config.js" defer></script>
+    <script src="./auth.js" defer></script>
+    <script src="./storage.js" defer></script>
+    <script src="./api.js" defer></script>
+    <script src="./ui.js" defer></script>
+    <script src="./data/kb/dsm5_psychosis_zh.js" defer></script>
+    <script src="./rag.js" defer></script>
+    <script src="./main.js" defer></script>
+</body>
+</html>

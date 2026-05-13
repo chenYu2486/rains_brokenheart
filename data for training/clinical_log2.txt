@@ -1,0 +1,30 @@
+共 10 种疾病, 10 个案例
+每个案例目标 ~200 轮对话
+============================================================
+  开始案例1: 17岁 女 高三学生
+  开始案例2: 23岁 女 舞蹈专业学生
+  开始案例3: 32岁 男 健身教练
+  开始案例4: 26岁 女 原模特
+  开始案例5: 38岁 女 银行柜员
+  开始案例1: 40岁 男 国企中层
+  开始案例2: 34岁 女 全职主妇
+  开始案例3: 28岁 男 程序员
+  开始案例4: 55岁 女 退休工人❌ 案例 2 (进食障碍) 出错: name 'all_messages' is not defined
+
+  开始案例5: 31岁 女 小学教师
+❌ 案例 3 (进食障碍) 出错: name 'all_messages' is not defined
+❌ 案例 5 (进食障碍) 出错: name 'all_messages' is not defined
+❌ 案例 2 (躯体症状障碍) 出错: name 'all_messages' is not defined
+❌ 案例 3 (躯体症状障碍) 出错: name 'all_messages' is not defined
+❌ 案例 1 (进食障碍) 出错: name 'all_messages' is not defined
+❌ 案例 4 (进食障碍) 出错: name 'all_messages' is not defined
+❌ 案例 1 (躯体症状障碍) 出错: name 'all_messages' is not defined
+❌ 案例 4 (躯体症状障碍) 出错: name 'all_messages' is not defined
+❌ 案例 5 (躯体症状障碍) 出错: name 'all_messages' is not defined
+
+============================================================
+✅ 全部完成！
+成功案例: 0/10
+总对话轮次: ~3127
+数据保存: clinical_dataset.jsonl
+============================================================

@@ -1,0 +1,6 @@
+{
+  "name": "shelter-proxy-aliyun",
+  "version": "1.0.0",
+  "description": "ShelterAI proxy on Alibaba Cloud Function Compute",
+  "main": "index.js"
+}

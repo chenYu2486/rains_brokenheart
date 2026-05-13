@@ -1,0 +1,12 @@
+name = "shelter-proxy"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+[[kv_namespaces]]
+binding = "QUOTA"
+id = "d2f5b213193f45ce9dcffa17dd9c539c"
+
+[vars]
+QUOTA_DAILY_LIMIT = 30
+
+# DASHSCOPE_API_KEY should be set via `wrangler secret put DASHSCOPE_API_KEY`
