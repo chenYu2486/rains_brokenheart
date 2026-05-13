@@ -12,7 +12,7 @@ from http.client import HTTPSConnection
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
-API_KEY = "sk-e61f910e9fb247668921008dfa15d0b7"
+API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 HOST = "api.deepseek.com"
 
 ENHANCE_PROMPT = """你是一位心理咨询对话优化专家。以下是一条心理咨询对话数据，包含多轮"来访者"和"咨询师"的对话。

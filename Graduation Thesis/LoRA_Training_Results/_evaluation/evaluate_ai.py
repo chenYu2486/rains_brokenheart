@@ -12,7 +12,7 @@ AI + 人工 双轨评测系统
   - results/ 目录下生成对比报告、雷达图、评分表格
 """
 
-import json, os, sys, time, random, ssl
+import json, os, sys, time, random, ssl, threading
 from http.client import HTTPSConnection
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -20,12 +20,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # 配置
 # ============================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATASET_PATH = os.path.join(BASE_DIR, 'eval_dataset.jsonl')
+DATASET_PATH = os.path.join(BASE_DIR, 'eval_dataset_500.json')
 RESULTS_DIR = os.path.join(BASE_DIR, 'results')
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-# DeepSeek API（仍有余额）
-API_KEY = "sk-e61f910e9fb247668921008dfa15d0b7"
+API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 HOST = "api.deepseek.com"
 JUDGE_MODEL = "deepseek-chat"
 
@@ -302,32 +301,44 @@ def main():
 
     print(f"加载了 {len(test_cases)} 条测试用例\n")
 
-    # 逐条评测
+    # 逐条评测（并行处理）
     all_results = []
+    total = len(test_cases)
+    lock = threading.Lock()
+    progress = [0]
 
-    for idx, case in enumerate(test_cases):
+    def process_one(case):
         eid = case["id"]
         topic = case["topic"]
         scenario = case["scenario"]
         user_input = case["user_input"]
 
-        print(f"[{idx+1}/{len(test_cases)}] {eid} ({topic})...", end=" ", flush=True)
+        with lock:
+            progress[0] += 1
+            cur = progress[0]
+            print(f"[{cur}/{total}] {eid} ({topic})...", end=" ", flush=True)
 
         # 生成 A（基座模型风格）和 B（微调模型风格）
         resp_a = generate_base_response(scenario, user_input)
         if resp_a and resp_a.startswith("[API_ERROR]"):
-            print(f"API错误，跳过")
-            continue
+            with lock:
+                print(f"API错误A，跳过")
+            return None
 
         resp_b = generate_ft_response(scenario, user_input)
         if resp_b and resp_b.startswith("[API_ERROR]"):
-            print(f"API错误，跳过")
-            continue
+            with lock:
+                print(f"API错误B，跳过")
+            return None
 
         # AI裁判盲评
         judge_result = judge_response(user_input, resp_a, resp_b, scenario)
 
-        all_results.append({
+        with lock:
+            print(f"done")
+            time.sleep(0.05)  # 极小延时防止print乱序
+
+        return {
             "id": eid,
             "topic": topic,
             "scenario": scenario,
@@ -335,12 +346,14 @@ def main():
             "response_base": resp_a,
             "response_ft": resp_b,
             "judge_scores": judge_result
-        })
+        }
 
-        print("done")
-
-        # API限流保护
-        time.sleep(0.3)
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {executor.submit(process_one, case): case for case in test_cases}
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                all_results.append(result)
 
     # 生成报告
     report = generate_report(all_results)

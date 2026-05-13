@@ -11,7 +11,7 @@ from http.client import HTTPSConnection
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
-API_KEY = "sk-e61f910e9fb247668921008dfa15d0b7"
+API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 HOST = "api.deepseek.com"
 BATCH_SIZE = 10  # 每批10条
 

@@ -5,13 +5,14 @@
 """
 
 import json
+import os
 import random
 import time
 import hashlib
 from http.client import HTTPSConnection
 import ssl
 
-API_KEY = "sk-76456a9801c14ee9901727f080c635f9"
+API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 HOST = "dashscope.aliyuncs.com"
 
 TOPICS = [

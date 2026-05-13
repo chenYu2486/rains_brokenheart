@@ -45,7 +45,7 @@
         defaults: {
             apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
             assessModel: 'qwen-turbo-latest',
-            therapyModel: 'qwen3-max-preview',
+            therapyModel: 'qwen3-8b-9c3af956383a',
             assessEnableThinking: false,
             therapyEnableThinking: false,
             intakeTurns: 4,

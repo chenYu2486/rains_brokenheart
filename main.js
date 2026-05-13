@@ -1740,12 +1740,6 @@
         const docPhoto = document.getElementById('docPhoto');
         const docName = document.getElementById('docName');
 
-        // ── 预填 API Key ──
-        if (!State.settings.apiKey) {
-            State.settings.apiKey = 'sk-76456a9801c14ee9901727f080c635f9';
-            persistSettings();
-        }
-
         // ── 用户点击闪屏后才会播放音乐（见 splash.onclick） ──
 
         // ── 雨声开关 ──
